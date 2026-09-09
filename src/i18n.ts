@@ -66,8 +66,6 @@ const translations: Record<Language, Record<string, string>> = {
 		'settings.coffeeQrHint': 'Drop {file} into the plugin folder to show this code',
 		'settings.workspaceList': 'Workspaces',
 		'settings.workspaceListDesc': 'Each workspace is its own dashboard file. Path format: vault-relative, no .md suffix (e.g. dashboard or notes/dashboard).',
-		'settings.calendarClickOpensWorkspace': 'Calendar click switches workspace',
-		'settings.calendarClickOpensWorkspaceDesc': 'When a daily/weekly note is opened from the Calendar plugin, automatically open the dashboard workspace whose weekStart covers that date.',
 
 		// Workspace switcher
 		'workspace.newTitle': 'New workspace',
@@ -1398,8 +1396,6 @@ const translations: Record<Language, Record<string, string>> = {
 		'settings.coffeeQrHint': '将 {file} 放入插件目录即可显示二维码',
 		'settings.workspaceList': '多工作台',
 		'settings.workspaceListDesc': '每个工作台对应一个独立的 dashboard.md 文档。路径填写：库内相对路径，不含 .md 后缀（如 dashboard 或 notes/dashboard）。',
-		'settings.calendarClickOpensWorkspace': '点击日历时自动切换工作台',
-		'settings.calendarClickOpensWorkspaceDesc': '从 Calendar 插件打开日记/周记时，自动切换到 weekStart 包含该日期的工作台仪表盘。',
 
 		// Workspace switcher
 		'workspace.newTitle': '新建工作台',

@@ -72,10 +72,6 @@ export interface DashboardSettings {
 	ticktickTimezone: string;
 	/** Skip the note popover: open notes directly in a tab on card click. */
 	disableNotePopover: boolean;
-	/** When a date-bearing note (e.g. daily note opened from Calendar) is opened,
-	 *  automatically switch the dashboard to the workspace whose `weekStart`
-	 *  covers that date. */
-	calendarClickOpensWorkspace: boolean;
 	/** User-defined color overrides applied on top of the active theme. */
 	customColors: CustomColors;
 	/** Global dashboard background image (vault path or URL). Empty = none. */
@@ -246,7 +242,6 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
 	ticktickCsrf: '',
 	ticktickTimezone: 'Asia/Shanghai',
 	disableNotePopover: false,
-	calendarClickOpensWorkspace: true,
 	customColors: {},
 	bgImage: '',
 	bgDim: 40,

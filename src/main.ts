@@ -195,8 +195,7 @@ export default class DashboardPlugin extends Plugin {
 			if (file instanceof TFile) void this.handleWorkspaceFileDeleted(file);
 		}));
 
-		// Calendar integration: opening a date-bearing note (daily/weekly) from
-		// the Calendar plugin switches to the workspace whose weekStart covers it.
+		// Direct open of a registered dashboard workspace file.
 		this.registerEvent(this.app.workspace.on('file-open', async (file: TFile | null) => {
 			if (!file || !(file instanceof TFile) || file.extension !== 'md') return;
 
@@ -207,19 +206,9 @@ export default class DashboardPlugin extends Plugin {
 			const cache = this.app.metadataCache.getFileCache(file);
 			const frontmatter = cache?.frontmatter;
 
-			// Case 1: the opened file itself is a registered dashboard workspace.
 			if (frontmatter?.dashboard && this.settings.workspaceFiles.includes(filePath)) {
 				await this.renderWorkspaceInLeaf(filePath, activeLeaf);
 				return;
-			}
-
-			// Case 2: a date-bearing note -> find the workspace week that contains it.
-			if (!this.settings.calendarClickOpensWorkspace) return;
-			const fileDate = parseDateFromFile(file, frontmatter);
-			if (!fileDate) return;
-			const workspacePath = this.findWorkspaceForDate(fileDate);
-			if (workspacePath) {
-				await this.renderWorkspaceInLeaf(workspacePath, activeLeaf);
 			}
 		}));
 	}
@@ -233,27 +222,6 @@ export default class DashboardPlugin extends Plugin {
 		} else {
 			this.openDashboard();
 		}
-	}
-
-	/** Given a date, find a workspace whose frontmatter `weekStart` covers the
-	 *  same week (using that workspace's weekStart weekday as the week anchor). */
-	private findWorkspaceForDate(date: Date): string | null {
-		const target = formatLocalDate(date);
-		for (const path of this.settings.workspaceFiles) {
-			const file = this.app.vault.getFileByPath(path.endsWith('.md') ? path : `${path}.md`);
-			if (!file) continue;
-			const wsCache = this.app.metadataCache.getFileCache(file);
-			const weekStartRaw = wsCache?.frontmatter?.weekStart;
-			if (typeof weekStartRaw !== 'string') continue;
-			const weekStart = parseLocalDate(weekStartRaw);
-			if (!weekStart) continue;
-			const weekAnchor = weekStart.getDay();
-			const startOfTarget = startOfWeekDay(date, weekAnchor);
-			if (formatLocalDate(startOfTarget) === formatLocalDate(weekStart)) {
-				return path;
-			}
-		}
-		return null;
 	}
 
 	/**
@@ -637,45 +605,4 @@ export default class DashboardPlugin extends Plugin {
 		await this.saveSettings();
 		await this.repointAllViews();
 	}
-}
-
-// ---- Calendar / date helpers ------------------------------------------------
-
-function parseLocalDate(input: string): Date | null {
-	const s = input.trim().slice(0, 10);
-	const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-	if (!m) return null;
-	const y = parseInt(m[1]!, 10);
-	const mo = parseInt(m[2]!, 10);
-	const d = parseInt(m[3]!, 10);
-	if (isNaN(y) || isNaN(mo) || isNaN(d)) return null;
-	const date = new Date(y, mo - 1, d);
-	if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
-	return date;
-}
-
-function formatLocalDate(date: Date): string {
-	const y = date.getFullYear();
-	const mo = String(date.getMonth() + 1).padStart(2, '0');
-	const d = String(date.getDate()).padStart(2, '0');
-	return `${y}-${mo}-${d}`;
-}
-
-function startOfWeekDay(date: Date, weekStartDay: number): Date {
-	const day = date.getDay();
-	const diff = (day - weekStartDay + 7) % 7;
-	return new Date(date.getFullYear(), date.getMonth(), date.getDate() - diff);
-}
-
-function parseDateFromFile(file: TFile, frontmatter?: Record<string, unknown> | undefined): Date | null {
-	if (frontmatter) {
-		for (const key of ['date', 'created', 'weekStart']) {
-			const raw = frontmatter[key];
-			if (typeof raw === 'string') {
-				const parsed = parseLocalDate(raw);
-				if (parsed) return parsed;
-			}
-		}
-	}
-	return parseLocalDate(file.basename);
 }
