@@ -20,6 +20,7 @@ export const SECTION_TYPE_OPTIONS: SectionTypeOption[] = [
 	{ value: 'sticky', icon: 'layers', labelKey: 'renderer.typeSticky' },
 	{ value: 'notes', icon: 'file-text', labelKey: 'renderer.typeNotesPlain' },
 	{ value: 'dataview', icon: 'table-2', labelKey: 'renderer.typeDataview' },
+	{ value: 'table', icon: 'table', labelKey: 'renderer.typeTable' },
 	{ value: 'library', icon: 'database', labelKey: 'renderer.typeLibrary' },
 	{ value: 'folder', icon: 'folder', labelKey: 'renderer.typeFolder' },
 	{ value: 'images', icon: 'image', labelKey: 'renderer.typeImages' },

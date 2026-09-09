@@ -18850,3 +18850,53 @@ body.is-mobile .dashboard-media-item .dashboard-media-tagbtn { opacity: 1; }
 	right: auto;
 	bottom: auto;
 }
+
+/* ---- Table section (sectionType 'table') ---- */
+.dashboard-table-wrap { padding: 10px 14px 16px; overflow-x: auto; }
+.dashboard-table-wrap .apex-table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1.5px solid #bfa596; border-radius: 10px; font-size: .92em; line-height: 1.5; overflow: hidden; }
+.apex-table th, .apex-table td { border: 1px solid #dcc9bc; padding: 6px 10px; text-align: left; vertical-align: top; }
+.apex-table tr:first-child th { background: #eadfd6; color: #6d4c41; font-weight: 600; text-align: center; }
+.apex-table th[colspan], .apex-table td[colspan] { background: #eadfd6; color: #6d4c41; font-weight: 600; text-align: center; }
+.apex-table td[rowspan]:first-child { background: #a1887f; color: #fff; font-weight: 600; white-space: nowrap; }
+.apex-table td[rowspan]:nth-child(2) { background: #a1887f; color: #fff; text-align: center; width: 2.2em; padding: 6px 4px; }
+.apex-table td[rowspan]:nth-child(3) { background: #f5ece6; }
+.apex-table td:first-child:not([rowspan]):not([colspan]) { text-align: center; color: #8d6e63; font-weight: 600; white-space: nowrap; }
+.apex-table td:nth-child(n+5) { text-align: center; }
+.dashboard-table-wrap .apex-table th { background: #eadfd6; color: #6d4c41; }
+.theme-dark .apex-table { border-color: #6d5c53; }
+.theme-dark .apex-table th, .theme-dark .apex-table td { border-color: #57493f; }
+.theme-dark .apex-table th[colspan], .theme-dark .apex-table td[colspan] { background: #3e322b; color: #d7ccc8; }
+.theme-dark .dashboard-table-wrap .apex-table th { background: #3e322b; color: #d7ccc8; }
+.theme-dark .apex-table td[rowspan]:first-child, .theme-dark .apex-table td[rowspan]:nth-child(2) { background: #6d4c41; }
+.theme-dark .apex-table td[rowspan]:nth-child(3) { background: #332a25; }
+
+/* ---- Table edit modal ---- */
+.dashboard-table-edit-area { width: 100%; min-height: 340px; resize: vertical; font-family: var(--font-monospace); font-size: 12px; line-height: 1.6; }
+
+/* ---- In-place table cell editing ---- */
+.apex-table td, .apex-table th { cursor: text; }
+.apex-table td.apex-table-cell--editable:hover, .apex-table th.apex-table-cell--editable:hover { outline: 1.5px dashed #a1887f; outline-offset: -2px; }
+.apex-table-cell-input { width: 100%; box-sizing: border-box; border: 1px solid #a1887f; border-radius: 4px; padding: 2px 6px; font: inherit; background: #fffdf9; color: #4e342e; }
+.apex-table-cell-textarea { resize: none; overflow: hidden; min-height: 24px; line-height: 1.4; white-space: pre-wrap; }
+.theme-dark .apex-table-cell-input { background: #2a211c; color: #e7dcd3; }
+
+/* ---- In-cell task list (weekly plan day cells) ---- */
+.apex-table-cell--tasks { padding: 4px 6px; vertical-align: top; }
+.apex-table-task-row { display: flex; align-items: flex-start; gap: 4px; min-height: 20px; text-align: left; }
+.apex-table-task-check { flex: 0 0 auto; margin: 3px 0 0 0; accent-color: #8d6e63; }
+.apex-table-task-label { flex: 1 1 auto; word-break: break-word; line-height: 1.45; }
+.apex-table-task--done { text-decoration: line-through; opacity: .55; }
+.apex-table-task-delete { flex: 0 0 auto; border: none; background: transparent; color: #a1887f; cursor: pointer; padding: 0 2px; font-size: 16px; line-height: 1; opacity: 0; transition: opacity .15s; }
+.apex-table-task-row:hover .apex-table-task-delete { opacity: 1; }
+.apex-table-task-delete:hover { color: #d32f2f; }
+.apex-table-task-add { margin-top: 2px; display: flex; opacity: 0; transition: opacity .15s; }
+.apex-table-cell--tasks:hover .apex-table-task-add,
+.apex-table-cell--tasks:focus-within .apex-table-task-add { opacity: 1; }
+.apex-table-task-add-input,
+.apex-table-task-edit-input { flex: 1 1 auto; width: 100%; border: none; background: transparent; font: inherit; font-size: .9em; padding: 1px 0; color: inherit; outline: none; }
+.apex-table-task-add-input::placeholder { color: #a1887f; opacity: .7; }
+.apex-table-cell-empty { opacity: .45; font-size: .85em; text-align: center; }
+.theme-dark .apex-table-task-delete { color: #bcaaa4; }
+.theme-dark .apex-table-task-delete:hover { color: #ef9a9a; }
+.theme-dark .apex-table-task-add-input::placeholder { color: #bcaaa4; }
+.dashboard-table-hint { margin-top: 8px; font-size: 11px; opacity: .55; text-align: right; }

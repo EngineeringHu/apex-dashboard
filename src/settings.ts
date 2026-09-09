@@ -434,6 +434,15 @@ export class DashboardSettingTab extends PluginSettingTab {
 		// of the group heading.
 		containerEl.createDiv({ cls: 'dashboard-settings-divider' });
 		new Setting(containerEl)
+			.setName(t('settings.calendarClickOpensWorkspace'))
+			.setDesc(t('settings.calendarClickOpensWorkspaceDesc'))
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.calendarClickOpensWorkspace)
+				.onChange(async (value) => {
+					this.plugin.settings = { ...this.plugin.settings, calendarClickOpensWorkspace: value };
+					await this.plugin.saveSettings();
+				}));
+		new Setting(containerEl)
 			.setName(t('settings.workspaceList'))
 			.setDesc(t('settings.workspaceListDesc'))
 			.setHeading();

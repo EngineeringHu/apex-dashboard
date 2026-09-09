@@ -72,6 +72,10 @@ export interface DashboardSettings {
 	ticktickTimezone: string;
 	/** Skip the note popover: open notes directly in a tab on card click. */
 	disableNotePopover: boolean;
+	/** When a date-bearing note (e.g. daily note opened from Calendar) is opened,
+	 *  automatically switch the dashboard to the workspace whose `weekStart`
+	 *  covers that date. */
+	calendarClickOpensWorkspace: boolean;
 	/** User-defined color overrides applied on top of the active theme. */
 	customColors: CustomColors;
 	/** Global dashboard background image (vault path or URL). Empty = none. */
@@ -242,6 +246,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
 	ticktickCsrf: '',
 	ticktickTimezone: 'Asia/Shanghai',
 	disableNotePopover: false,
+	calendarClickOpensWorkspace: true,
 	customColors: {},
 	bgImage: '',
 	bgDim: 40,
@@ -569,6 +574,8 @@ export interface DashboardColumn {
 	ticktickConfig?: TickTickConfig;
 	/** Dataview section config (sectionType 'dataview'). */
 	dataviewConfig?: DataviewConfig;
+	/** Raw markdown table body (sectionType 'table'), incl. `>`/`^` merge markers. */
+	tableContent?: string;
 	/** User-set max height in px (drag-resize, desktop only). */
 	height?: number;
 	/** Side-by-side pairing: two adjacent `half` columns render as one row
@@ -638,6 +645,7 @@ export interface RenderCallbacks {
 	onArchiveTasks(columnName: string): void;
 	onLibraryConfigChange(columnName: string, config: LibraryConfig): void;
 	onDataviewConfigChange(columnName: string, config: DataviewConfig): void;
+	onTableContentChange(columnName: string, content: string): void;
 	onQuickNoteCreate(preset: QuickNotePreset): void;
 	onQuickNoteCapture(text: string): void;
 	onOpenPinnedNote(note: PinnedNote): void;

@@ -24,7 +24,7 @@ import { t } from './i18n';
 import { normalizeColumnPairs } from './column-pairs';
 
 const KNOWN_METADATA_KEYS = new Set(['id', 'link', 'progress', 'due', 'streak', 'type', 'color', 'cover', 'width', 'size', 'lat', 'lon', 'city', 'track', 'days', 'cols', 'rows', 'gcol', 'grow']);
-const SECTION_TYPES = new Set(['memo', 'todo', 'projects', 'notes', 'dashboard', 'library', 'folder', 'images', 'videos', 'alltasks', 'calendar', 'dataview', 'weread', 'ticktick', 'sticky']);
+const SECTION_TYPES = new Set(['memo', 'todo', 'projects', 'notes', 'dashboard', 'library', 'folder', 'images', 'videos', 'alltasks', 'calendar', 'dataview', 'weread', 'ticktick', 'sticky', 'table']);
 
 // Card colors are persisted without the leading '#' (see serialize) so Obsidian
 // does not register them as tags. Restore the '#' here; legacy '#xxxxxx' values
@@ -298,6 +298,12 @@ export function serialize(data: DashboardData): string {
 	for (const column of data.columns) {
 		lines.push(`## ${column.name}`);
 		lines.push('');
+
+		if (column.sectionType === 'table') {
+			if (column.tableContent) lines.push(...column.tableContent.split('\n'));
+			lines.push('');
+			continue;
+		}
 
 		if (column.sectionType === 'library' || column.sectionType === 'folder' || column.sectionType === 'images' || column.sectionType === 'videos' || column.sectionType === 'alltasks' || column.sectionType === 'calendar' || column.sectionType === 'dataview') continue;
 
@@ -830,11 +836,14 @@ function parseColumns(body: string, defs: Array<{ name: string; color: string; s
 			// stable across save/reload. Project/notes/etc. sections keep using `docs`.
 			// Sticky ("便利贴") sections mix memo and todo cards; only their memo-ish
 			// cards (generic/note) get the same folding — todo cards keep `docs` intact.
-			cards: resolvedType === 'memo'
-				? cards.map(foldDocsIntoBody)
-				: resolvedType === 'sticky'
-					? cards.map(c => (c.type === 'generic' || c.type === 'note') ? foldDocsIntoBody(c) : c)
-					: cards,
+			cards: resolvedType === 'table'
+				? []
+				: resolvedType === 'memo'
+					? cards.map(foldDocsIntoBody)
+					: resolvedType === 'sticky'
+						? cards.map(c => (c.type === 'generic' || c.type === 'note') ? foldDocsIntoBody(c) : c)
+						: cards,
+			tableContent: resolvedType === 'table' ? section.content.trim() : undefined,
 			libraryConfig: def?.libraryConfig,
 			wereadConfig: def?.wereadConfig,
 			ticktickConfig: def?.ticktickConfig,
