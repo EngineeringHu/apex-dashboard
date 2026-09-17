@@ -673,6 +673,95 @@ export function generateDefaultMarkdown(): string {
 	});
 }
 
+/** Empty weekly-plan board (Covey 4th-generation weekly worksheet): the same
+ *  section layout as the weekly dashboard, with all DATA cleared — role
+ *  rows/headers survive, goals/tasks/day cells start empty. Used by the
+ *  folder-mode + button so every new week starts from a blank board. */
+export function generateEmptyWeeklyMarkdown(): string {
+	return `---
+dashboard: true
+banner:
+  quote: "时间无法被管理，能管理的只有自己。"
+  author: "史蒂芬·柯维 ·《高效能人士的七个习惯》"
+columns:
+  - name: 角色 → 目标
+    color: "#a1887f"
+    type: memo
+  - name: 周计划表
+    color: "#8d6e63"
+    type: table
+    height: 1088
+  - name: 本周要务
+    color: "#8d6e63"
+    type: todo
+  - name: 本周日程
+    color: "#6d4c41"
+    type: calendar
+  - name: 不断更新
+    color: "#bcaaa4"
+    type: memo
+---
+
+## 角色 → 目标
+
+### 个体：个人成长
+id: card-week-r1
+
+### 伴侣
+id: card-week-r2
+
+### 工作岗位：开发
+id: card-week-r3
+
+### 家庭：儿子
+id: card-week-r4
+
+### 生意：个人销售
+id: card-week-r5
+
+### 社交：朋友
+id: card-week-r6
+
+### 联合道路公司主席
+id: card-week-r7
+
+## 周计划表
+
+| **周 计 划** | > | > |  | 星期日 | 星期一 | 星期二 | 星期三 | 星期四 | 星期五 | 星期六 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 角色 | ➤ | 目标 | 本周要务 | **本日要务** | > | > | > | > | > | > |
+| 个体：个人 | ➤ |  |  |  |  |  |  |  |  |  |
+| 伴侣 | ➤ |  | ^ |  |  |  |  |  |  |  |
+| 工作岗位：开发 | ➤ |  | ^ |  |  |  |  |  |  |  |
+| 家庭 | ➤ |  | ^ |  |  |  |  |  |  |  |
+| 个人销售 | ➤ |  | ^ |  |  |  |  |  |  |  |
+| 社交：朋友 | ➤ |  | ^ |  |  |  |  |  |  |  |
+| ^ | ^ | ^ | ^ |  |  |  |  |  |  |  |
+| ^ | ^ | ^ | ^ |  |  |  |  |  |  |  |
+
+## 本周要务
+
+### 第二象限投入（重要不紧急）
+id: card-week-q2
+type: task
+
+### 本日要务
+id: card-week-today
+type: task
+
+## 本周日程
+
+## 不断更新
+
+### 四维磨刀
+id: card-week-renewal
+身体：＿＿＿＿
+智力：＿＿＿＿
+精神：＿＿＿＿
+社会／情感：＿＿＿＿
+`;
+}
+
 function splitFrontmatter(markdown: string): { frontmatter: Record<string, unknown>; body: string } {
 	const trimmed = markdown.trimStart();
 	if (!trimmed.startsWith('---')) {

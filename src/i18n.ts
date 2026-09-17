@@ -66,6 +66,8 @@ const translations: Record<Language, Record<string, string>> = {
 		'settings.coffeeQrHint': 'Drop {file} into the plugin folder to show this code',
 		'settings.workspaceList': 'Workspaces',
 		'settings.workspaceListDesc': 'Each workspace is its own dashboard file. Path format: vault-relative, no .md suffix (e.g. dashboard or notes/dashboard).',
+		'settings.workspaceFolder': 'Weekly workspace folder',
+		'settings.workspaceFolderDesc': 'When set, the banner shows a dropdown of every Markdown file in this folder and the + button creates a new empty weekly plan there. Clear it to go back to the numbered pills.',
 
 		// Workspace switcher
 		'workspace.newTitle': 'New workspace',
@@ -82,6 +84,9 @@ const translations: Record<Language, Record<string, string>> = {
 		'workspace.dragReorder': 'Drag to reorder',
 		'workspace.pathExists': 'That path is already used by another workspace',
 		'workspace.pathNotFound': 'No file found at {file} — move the file first, then update the path',
+		'workspace.newWeeklyTitle': 'New weekly plan',
+		'workspace.weeklyNamePlaceholder': 'File name, e.g. "Week 3"',
+		'workspace.defaultWeeklyName': 'Week {n}',
 		'settings.backup': 'Backup',
 		'settings.backupEnabled': 'Periodic backup',
 		'settings.backupEnabledDesc': 'Automatically snapshot the dashboard file into the plugin folder on a schedule.',
@@ -1396,6 +1401,8 @@ const translations: Record<Language, Record<string, string>> = {
 		'settings.coffeeQrHint': '将 {file} 放入插件目录即可显示二维码',
 		'settings.workspaceList': '多工作台',
 		'settings.workspaceListDesc': '每个工作台对应一个独立的 dashboard.md 文档。路径填写：库内相对路径，不含 .md 后缀（如 dashboard 或 notes/dashboard）。',
+		'settings.workspaceFolder': '周记文件夹',
+		'settings.workspaceFolderDesc': '设置后，横幅将显示该文件夹内所有 Markdown 文件的下拉选择框，+ 按钮会在该文件夹内新建空白周计划。清空则恢复数字切换按钮。',
 
 		// Workspace switcher
 		'workspace.newTitle': '新建工作台',
@@ -1412,6 +1419,9 @@ const translations: Record<Language, Record<string, string>> = {
 		'workspace.dragReorder': '拖拽调整顺序',
 		'workspace.pathExists': '该路径已被其他工作台使用',
 		'workspace.pathNotFound': '未找到 {file} —— 请先移动文件，再更新路径',
+		'workspace.newWeeklyTitle': '新建周计划',
+		'workspace.weeklyNamePlaceholder': '文件名，如：第3周',
+		'workspace.defaultWeeklyName': '第{n}周',
 		'settings.backup': '备份',
 		'settings.backupEnabled': '定时备份',
 		'settings.backupEnabledDesc': '按计划自动将仪表盘文件快照保存到插件文件夹中。',

@@ -10,7 +10,7 @@ import { ThemeStudioModal } from './theme-studio-modal';
 import { QuickNoteConfigModal } from './quick-note-config-modal';
 import { showConfirmDialog } from './confirm-dialog';
 import { showPromptDialog } from './prompt-dialog';
-import { normalizeWorkspacePath } from './workspace-registry';
+import { normalizeWorkspaceFolder, normalizeWorkspacePath } from './workspace-registry';
 import { DEFAULT_TICKTICK_TZ, isValidTz } from './ticktick-tz';
 import { PathPickerModal } from './path-picker-modal';
 import { SUPPORT_IMAGE_DATA_URL } from './assets/support-image';
@@ -437,6 +437,31 @@ export class DashboardSettingTab extends PluginSettingTab {
 			.setName(t('settings.workspaceList'))
 			.setDesc(t('settings.workspaceListDesc'))
 			.setHeading();
+
+		// Folder mode: files inside this folder replace the numbered pills with
+		// a banner dropdown; the + button creates empty weekly boards there.
+		// Commits on Enter/blur so the banner re-render doesn't fight typing.
+		const folderSetting = new Setting(containerEl)
+			.setName(t('settings.workspaceFolder'))
+			.setDesc(t('settings.workspaceFolderDesc'));
+		folderSetting.addText(text => {
+			text.setPlaceholder('周记')
+				.setValue(this.plugin.settings.workspaceFolder ?? '');
+			const commit = async () => {
+				const value = normalizeWorkspaceFolder(text.inputEl.value);
+				if (value === this.plugin.workspaceFolder()) return;
+				this.plugin.settings = { ...this.plugin.settings, workspaceFolder: value };
+				await this.plugin.saveSettings();
+				this.plugin.refreshAllDashboards();
+			};
+			text.inputEl.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					void commit();
+				}
+			});
+			text.inputEl.addEventListener('blur', () => { void commit(); });
+		});
 
 		/** Index of the row being dragged; null when idle. */
 		let dragIndex: number | null = null;

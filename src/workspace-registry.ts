@@ -112,3 +112,68 @@ export function nextWorkspacePath(
 export function workspaceBackupName(base: string, ts: string): string {
 	return `${base}.${ts}.md`;
 }
+
+// --- Folder mode ----------------------------------------------------------
+// Folder mode points the banner switcher at ONE folder: every Markdown file
+// directly inside it becomes a selectable workspace, and the + button creates
+// a new empty weekly board there. An empty folder value turns it off.
+
+/** Normalize the workspace-folder setting: trim, strip leading/trailing '/'.
+    Non-string input and '' normalize to '' (folder mode off). */
+export function normalizeWorkspaceFolder(folder: unknown): string {
+	if (typeof folder !== 'string') return '';
+	let f = folder.trim();
+	if (f.startsWith('/')) f = f.slice(1);
+	while (f.endsWith('/')) f = f.slice(0, -1);
+	return f;
+}
+
+/** Whether an extensionless workspace path sits inside `folder` (already
+    normalized, non-empty). */
+export function isUnderWorkspaceFolder(path: string, folder: string): boolean {
+	if (!folder) return false;
+	return path === folder || path.startsWith(`${folder}/`);
+}
+
+/** File-name part of an extensionless workspace path ('a/b' -> 'b'). */
+export function workspaceFileBaseName(path: string): string {
+	const slash = path.lastIndexOf('/');
+	return slash >= 0 ? path.slice(slash + 1) : path;
+}
+
+/** Strip filesystem-unsafe characters from a preferred file name. CJK and
+    most Unicode survive; only path separators, Windows-forbidden characters
+    and control characters are removed. */
+export function sanitizeWorkspaceFileBase(name: string): string {
+	const forbidden = new Set(['\\', '/', ':', '*', '?', '"', '<', '>', '|']);
+	let out = '';
+	for (const ch of name) {
+		const code = ch.codePointAt(0) ?? 0;
+		if (forbidden.has(ch) || code < 32) continue;
+		out += ch;
+	}
+	return out.replace(/\s+/g, ' ').trim();
+}
+
+/** Next free file path inside `folder`: `<folder>/<base>` when free, else
+    `<folder>/<base>-<n>` on collision. Auto-numbered fallback when the
+    preferred name sanitizes to empty. `exists` receives the extensionless
+    path; `existingCount` seeds the auto-numbered fallback. */
+export function nextFolderWorkspacePath(
+	folder: string,
+	preferredName: string,
+	existingCount: number,
+	exists: (path: string) => boolean,
+): string {
+	const base = sanitizeWorkspaceFileBase(preferredName);
+	if (base) {
+		if (!exists(`${folder}/${base}`)) return `${folder}/${base}`;
+		for (let n = 2; n < 100; n++) {
+			const candidate = `${folder}/${base}-${n}`;
+			if (!exists(candidate)) return candidate;
+		}
+	}
+	const auto = `week-${existingCount + 1}`;
+	if (!exists(`${folder}/${auto}`)) return `${folder}/${auto}`;
+	return `${folder}/week-${Date.now()}`;
+}

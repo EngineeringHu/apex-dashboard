@@ -1,4 +1,4 @@
-import { Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
+import { Notice, Plugin, TAbstractFile, TFile, TFolder, WorkspaceLeaf } from 'obsidian';
 import { DEFAULT_SETTINGS, type DashboardSettings, type CountdownConfig } from './types';
 import { DashboardSettingTab } from './settings';
 import { DashboardView, DASHBOARD_VIEW_TYPE } from './view';
@@ -17,13 +17,17 @@ import { teardownBasenameIndex } from './renderer';
 import { MediaTagService, sanitizeMediaTags, registerMediaTagService } from './media-tags';
 import { HabitService, registerHabitService } from './habit-service';
 import { ExpenseService, registerExpenseService } from './expense-service';
-import { generateDefaultMarkdown } from './parser';
+import { generateDefaultMarkdown, generateEmptyWeeklyMarkdown } from './parser';
 import {
 	alignWorkspaceNames,
+	isUnderWorkspaceFolder,
 	migrateWorkspaces,
+	nextFolderWorkspacePath,
 	nextWorkspacePath,
+	normalizeWorkspaceFolder,
 	normalizeWorkspacePath,
 	pruneMissingWorkspaces,
+	workspaceFileBaseName,
 } from './workspace-registry';
 
 /** All valid style preset keys — single source of truth for migration. */
@@ -189,11 +193,26 @@ export default class DashboardPlugin extends Plugin {
 		// workspace file update the list (and the active entry) so the engine
 		// watchers never point at a path that no longer exists.
 		this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-			if (file instanceof TFile) void this.handleWorkspaceFileRenamed(file, oldPath);
+			if (file instanceof TFile) {
+				void this.handleWorkspaceFileRenamed(file, oldPath);
+				this.refreshFolderModeSwitcher(file.path, oldPath);
+			}
 		}));
 		this.registerEvent(this.app.vault.on('delete', (file: TAbstractFile) => {
-			if (file instanceof TFile) void this.handleWorkspaceFileDeleted(file);
+			if (file instanceof TFile) {
+				void this.handleWorkspaceFileDeleted(file);
+				this.refreshFolderModeSwitcher(file.path);
+			}
 		}));
+		// Folder mode: a file appearing in the workspace folder must show up in
+		// the banner dropdown. Registered after layout ready so the create
+		// events Obsidian fires while indexing the vault on startup don't
+		// trigger a re-render flood.
+		this.app.workspace.onLayoutReady(() => {
+			this.registerEvent(this.app.vault.on('create', (file: TAbstractFile) => {
+				if (file instanceof TFile) this.refreshFolderModeSwitcher(file.path);
+			}));
+		});
 
 		// Direct open of a registered dashboard workspace file.
 		this.registerEvent(this.app.workspace.on('file-open', async (file: TFile | null) => {
@@ -206,7 +225,7 @@ export default class DashboardPlugin extends Plugin {
 			const cache = this.app.metadataCache.getFileCache(file);
 			const frontmatter = cache?.frontmatter;
 
-			if (frontmatter?.dashboard && this.settings.workspaceFiles.includes(filePath)) {
+			if (frontmatter?.dashboard && (this.settings.workspaceFiles.includes(filePath) || this.isFolderWorkspace(filePath))) {
 				await this.renderWorkspaceInLeaf(filePath, activeLeaf);
 				return;
 			}
@@ -350,6 +369,70 @@ export default class DashboardPlugin extends Plugin {
 		return !!this.app.vault.getFileByPath(withExt);
 	}
 
+	// --- Folder mode ----------------------------------------------------------
+	// When settings.workspaceFolder is set, every Markdown file directly inside
+	// that folder becomes a selectable workspace (banner dropdown), and the +
+	// button creates a new EMPTY weekly board there.
+
+	/** Normalized workspace-folder setting ('' = folder mode off). */
+	workspaceFolder(): string {
+		return normalizeWorkspaceFolder(this.settings.workspaceFolder);
+	}
+
+	/** Markdown files directly inside the workspace folder, as extensionless
+	 *  registry-style paths, natural-sorted by name (第2周 < 第10周). */
+	folderWorkspaceFiles(): string[] {
+		const folder = this.workspaceFolder();
+		if (!folder) return [];
+		return this.app.vault.getMarkdownFiles()
+			.filter((f) => (f.parent?.path ?? '') === folder)
+			.map((f) => normalizeWorkspacePath(f.path))
+			.sort((a, b) => workspaceFileBaseName(a).localeCompare(workspaceFileBaseName(b), undefined, { numeric: true }));
+	}
+
+	/** Whether an extensionless path is an existing workspace file inside the
+	 *  workspace folder. */
+	isFolderWorkspace(path: string): boolean {
+		const folder = this.workspaceFolder();
+		return !!folder && isUnderWorkspaceFolder(path, folder) && this.workspaceFileExists(path);
+	}
+
+	/** Switcher choices in folder mode: legacy non-folder registry entries
+	 *  first (with their display names), then the folder's files by basename. */
+	getWorkspaceChoices(): Array<{ path: string; label: string; inFolder: boolean }> {
+		const choices: Array<{ path: string; label: string; inFolder: boolean }> = [];
+		const folder = this.workspaceFolder();
+		if (!folder) return choices;
+		const seen = new Set<string>();
+		const names = alignWorkspaceNames(this.settings.workspaceFiles, this.settings.workspaceNames);
+		this.settings.workspaceFiles.forEach((file, i) => {
+			if (seen.has(file) || isUnderWorkspaceFolder(file, folder)) return;
+			seen.add(file);
+			const name = names[i]?.trim() ?? '';
+			choices.push({ path: file, label: name || `${workspaceFileBaseName(file)}.md`, inFolder: false });
+		});
+		for (const file of this.folderWorkspaceFiles()) {
+			if (seen.has(file)) continue;
+			seen.add(file);
+			choices.push({ path: file, label: workspaceFileBaseName(file), inFolder: true });
+		}
+		return choices;
+	}
+
+	/** Folder-mode upkeep: any vault change inside the workspace folder
+	 *  re-renders the banner dropdown, so files added/renamed/removed outside
+	 *  the registry path (e.g. via the file explorer) show up immediately. */
+	private refreshFolderModeSwitcher(...paths: string[]): void {
+		const folder = this.workspaceFolder();
+		if (!folder) return;
+		for (const p of paths) {
+			if (isUnderWorkspaceFolder(normalizeWorkspacePath(p), folder)) {
+				this.refreshAllDashboards();
+				return;
+			}
+		}
+	}
+
 	/** Switch the active workspace. `path` is a registry path (no .md). */
 	async switchWorkspace(path: string): Promise<void> {
 		return this.runWorkspaceOp(() => this.doSwitchWorkspace(path));
@@ -358,8 +441,22 @@ export default class DashboardPlugin extends Plugin {
 	private async doSwitchWorkspace(path: string): Promise<void> {
 		const target = normalizeWorkspacePath(path);
 		if (!target || target === normalizeWorkspacePath(this.settings.dashboardFile)) return;
-		if (!this.settings.workspaceFiles.includes(target)) return;
-		this.settings = { ...this.settings, dashboardFile: target };
+		const inRegistry = this.settings.workspaceFiles.includes(target);
+		// Folder mode also accepts any existing file inside the workspace folder.
+		if (!inRegistry && !this.isFolderWorkspace(target)) return;
+		if (inRegistry) {
+			this.settings = { ...this.settings, dashboardFile: target };
+		} else {
+			// Folder file not yet registered: register it so the rename/delete
+			// and file-explorer integrations keep following it.
+			const names = alignWorkspaceNames(this.settings.workspaceFiles, this.settings.workspaceNames);
+			this.settings = {
+				...this.settings,
+				workspaceFiles: [...this.settings.workspaceFiles, target],
+				workspaceNames: [...names, ''],
+				dashboardFile: target,
+			};
+		}
 		// Persist BEFORE re-pointing engines: a crash mid-switch then reopens
 		// on the new workspace instead of resurrecting the old one.
 		await this.saveSettings();
@@ -379,22 +476,46 @@ export default class DashboardPlugin extends Plugin {
 		}
 	}
 
-	/** Create a new workspace file with default board content, register it and
-	 *  switch to it. */
+	/** Create a new workspace file, register it and switch to it. In folder
+	 *  mode the file is an EMPTY weekly board created inside the workspace
+	 *  folder; otherwise a default demo board next to the first registry
+	 *  entry. */
 	async createWorkspace(name: string): Promise<void> {
 		return this.runWorkspaceOp(() => this.doCreateWorkspace(name));
 	}
 
 	private async doCreateWorkspace(name: string): Promise<void> {
 		const trimmed = name.trim();
-		const path = nextWorkspacePath(
-			this.settings.workspaceFiles,
-			trimmed,
-			(p) => this.workspaceFileExists(p),
-		);
+		const folder = this.workspaceFolder();
+		let path: string;
+		let content: string;
+		if (folder) {
+			path = nextFolderWorkspacePath(
+				folder,
+				trimmed,
+				this.folderWorkspaceFiles().length,
+				(p) => this.workspaceFileExists(p),
+			);
+			content = generateEmptyWeeklyMarkdown();
+			// vault.create() needs every parent folder to exist.
+			if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
+				try {
+					await this.app.vault.createFolder(folder);
+				} catch {
+					// Lost a race or it appeared meanwhile — the create below decides.
+				}
+			}
+		} else {
+			path = nextWorkspacePath(
+				this.settings.workspaceFiles,
+				trimmed,
+				(p) => this.workspaceFileExists(p),
+			);
+			content = generateDefaultMarkdown();
+		}
 		try {
 			const withExt = path.endsWith('.md') ? path : `${path}.md`;
-			await this.app.vault.create(withExt, generateDefaultMarkdown());
+			await this.app.vault.create(withExt, content);
 		} catch (err) {
 			console.error('Workspace file creation failed:', err);
 			new Notice(t('workspace.createFailed'));
@@ -514,9 +635,12 @@ export default class DashboardPlugin extends Plugin {
 		}
 	}
 
-	/** Switch to the adjacent workspace (wraps around; no-op with one). */
+	/** Switch to the adjacent workspace (wraps around; no-op with one). In
+	 *  folder mode this cycles the dropdown choices, not the raw registry. */
 	private cycleWorkspace(delta: 1 | -1): void {
-		const files = this.settings.workspaceFiles;
+		const files = this.workspaceFolder()
+			? this.getWorkspaceChoices().map((c) => c.path)
+			: this.settings.workspaceFiles;
 		if (files.length < 2) return;
 		const active = normalizeWorkspacePath(this.settings.dashboardFile);
 		const idx = Math.max(0, files.indexOf(active));
@@ -595,11 +719,17 @@ export default class DashboardPlugin extends Plugin {
 			const names = alignWorkspaceNames(files, this.settings.workspaceNames);
 			const nextFiles = files.filter((_, i) => i !== idx);
 			const active = normalizeWorkspacePath(this.settings.dashboardFile);
+			// In folder mode, fall back to another weekly file before the
+			// legacy root workspaces.
+			const folder = this.workspaceFolder();
+			const fallback = folder
+				? nextFiles.find((f) => isUnderWorkspaceFolder(f, folder)) ?? nextFiles[0]!
+				: nextFiles[0]!;
 			this.settings = {
 				...this.settings,
 				workspaceFiles: nextFiles,
 				workspaceNames: names.filter((_, i) => i !== idx),
-				dashboardFile: active === entry ? nextFiles[0]! : this.settings.dashboardFile,
+				dashboardFile: active === entry ? fallback : this.settings.dashboardFile,
 			};
 		}
 		await this.saveSettings();

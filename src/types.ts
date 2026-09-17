@@ -10,6 +10,9 @@ export interface DashboardSettings {
 	workspaceFiles: string[];
 	/** Optional display names, parallel to workspaceFiles ('' = number only). */
 	workspaceNames?: string[];
+	/** Folder whose Markdown files populate the banner file picker (folder
+	    mode); the + button creates new weekly boards there. '' = off. */
+	workspaceFolder: string;
 	recentDocCount: number;
 	language: Language;
 	stylePreset: string;
@@ -208,6 +211,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
 	dashboardFile: 'dashboard',
 	workspaceFiles: ['dashboard'],
 	workspaceNames: [''],
+	workspaceFolder: '周记',
 	recentDocCount: 5,
 	language: 'zh',
 	stylePreset: 'island',
