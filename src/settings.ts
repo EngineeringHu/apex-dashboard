@@ -463,6 +463,30 @@ export class DashboardSettingTab extends PluginSettingTab {
 			text.inputEl.addEventListener('blur', () => { void commit(); });
 		});
 
+		// Template file the folder-mode + button copies. Same path convention
+		// as the workspace rows (vault-relative, no .md); empty = built-in
+		// empty weekly template.
+		const templateSetting = new Setting(containerEl)
+			.setName(t('settings.workspaceTemplate'))
+			.setDesc(t('settings.workspaceTemplateDesc'));
+		templateSetting.addText(text => {
+			text.setPlaceholder('模板/周计划模板')
+				.setValue(this.plugin.settings.workspaceTemplateFile ?? '');
+			const commit = async () => {
+				const value = normalizeWorkspacePath(text.inputEl.value);
+				if (value === normalizeWorkspacePath(this.plugin.settings.workspaceTemplateFile)) return;
+				this.plugin.settings = { ...this.plugin.settings, workspaceTemplateFile: value };
+				await this.plugin.saveSettings();
+			};
+			text.inputEl.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					void commit();
+				}
+			});
+			text.inputEl.addEventListener('blur', () => { void commit(); });
+		});
+
 		/** Index of the row being dragged; null when idle. */
 		let dragIndex: number | null = null;
 

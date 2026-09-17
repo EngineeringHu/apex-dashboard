@@ -13,6 +13,10 @@ export interface DashboardSettings {
 	/** Folder whose Markdown files populate the banner file picker (folder
 	    mode); the + button creates new weekly boards there. '' = off. */
 	workspaceFolder: string;
+	/** Vault-relative path (no leading '/', no .md) of the template file whose
+	    content is copied by the folder-mode + button. '' = built-in empty
+	    weekly template. */
+	workspaceTemplateFile: string;
 	recentDocCount: number;
 	language: Language;
 	stylePreset: string;
@@ -212,6 +216,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
 	workspaceFiles: ['dashboard'],
 	workspaceNames: [''],
 	workspaceFolder: '周记',
+	workspaceTemplateFile: '',
 	recentDocCount: 5,
 	language: 'zh',
 	stylePreset: 'island',

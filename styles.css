@@ -1825,6 +1825,38 @@
 	width: 14px;
 }
 
+/* Folder-mode file picker: the dropdown replacing the number pills. Slightly
+   taller than a pill so file names stay legible; same translucent chrome.
+   color-scheme makes the native popup list render dark. */
+.dashboard-workspace-select {
+	height: 18px;
+	max-width: 130px;
+	padding: 0 2px;
+	background: rgba(0, 0, 0, 0.28);
+	border: 1px solid rgba(255, 255, 255, 0.22);
+	border-radius: var(--db-radius-sm, 6px);
+	color: rgba(255, 255, 255, 0.78);
+	font-size: 0.55em;
+	line-height: 1;
+	cursor: pointer;
+	outline: none;
+	box-shadow: none !important;
+	color-scheme: dark;
+}
+
+.dashboard-workspace-select:hover,
+.dashboard-workspace-select:focus,
+.dashboard-workspace-select:active {
+	color: #ffffff;
+	border-color: rgba(255, 255, 255, 0.5);
+	background: rgba(0, 0, 0, 0.4);
+}
+
+.dashboard-workspace-select option {
+	background: #262626;
+	color: #eeeeee;
+}
+
 /* --- Banner collapsed state (desktop only) --- */
 @media (min-width: 641px) {
 	.dashboard-banner--collapsed {
@@ -11544,6 +11576,13 @@
 
 	.dashboard-workspace-add-btn {
 		width: 16px;
+	}
+
+	/* Folder-mode picker: larger touch target, wider for CJK file names. */
+	.dashboard-workspace-select {
+		height: 20px;
+		max-width: 150px;
+		font-size: 0.6em;
 	}
 
 	.dashboard-mobile-action-btn {

@@ -380,13 +380,16 @@ export default class DashboardPlugin extends Plugin {
 	}
 
 	/** Markdown files directly inside the workspace folder, as extensionless
-	 *  registry-style paths, natural-sorted by name (第2周 < 第10周). */
+	 *  registry-style paths, natural-sorted by name (第2周 < 第10周). The
+	 *  template file itself is excluded — it is source material, not a board. */
 	folderWorkspaceFiles(): string[] {
 		const folder = this.workspaceFolder();
 		if (!folder) return [];
+		const templatePath = normalizeWorkspacePath(this.settings.workspaceTemplateFile);
 		return this.app.vault.getMarkdownFiles()
 			.filter((f) => (f.parent?.path ?? '') === folder)
 			.map((f) => normalizeWorkspacePath(f.path))
+			.filter((p) => p !== templatePath)
 			.sort((a, b) => workspaceFileBaseName(a).localeCompare(workspaceFileBaseName(b), undefined, { numeric: true }));
 	}
 
@@ -395,6 +398,21 @@ export default class DashboardPlugin extends Plugin {
 	isFolderWorkspace(path: string): boolean {
 		const folder = this.workspaceFolder();
 		return !!folder && isUnderWorkspaceFolder(path, folder) && this.workspaceFileExists(path);
+	}
+
+	/** Content for a new folder-mode board: the configured template file's
+	 *  content when it exists, else the built-in empty weekly template. */
+	private async readWorkspaceTemplate(): Promise<string> {
+		const templatePath = normalizeWorkspacePath(this.settings.workspaceTemplateFile);
+		if (templatePath) {
+			const withExt = templatePath.endsWith('.md') ? templatePath : `${templatePath}.md`;
+			const file = this.app.vault.getFileByPath(withExt);
+			if (file instanceof TFile) {
+				return await this.app.vault.read(file);
+			}
+			new Notice(t('workspace.templateNotFound', { file: withExt }));
+		}
+		return generateEmptyWeeklyMarkdown();
 	}
 
 	/** Switcher choices in folder mode: legacy non-folder registry entries
@@ -496,7 +514,7 @@ export default class DashboardPlugin extends Plugin {
 				this.folderWorkspaceFiles().length,
 				(p) => this.workspaceFileExists(p),
 			);
-			content = generateEmptyWeeklyMarkdown();
+			content = await this.readWorkspaceTemplate();
 			// vault.create() needs every parent folder to exist.
 			if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
 				try {

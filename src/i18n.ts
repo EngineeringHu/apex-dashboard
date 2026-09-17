@@ -68,6 +68,8 @@ const translations: Record<Language, Record<string, string>> = {
 		'settings.workspaceListDesc': 'Each workspace is its own dashboard file. Path format: vault-relative, no .md suffix (e.g. dashboard or notes/dashboard).',
 		'settings.workspaceFolder': 'Weekly workspace folder',
 		'settings.workspaceFolderDesc': 'When set, the banner shows a dropdown of every Markdown file in this folder and the + button creates a new empty weekly plan there. Clear it to go back to the numbered pills.',
+		'settings.workspaceTemplate': 'New-board template file',
+		'settings.workspaceTemplateDesc': 'When the + button creates a new weekly plan, the content of this Markdown file is copied as the starting board. Path format: vault-relative, no .md suffix (e.g. templates/week). A missing file falls back to the built-in empty weekly template.',
 
 		// Workspace switcher
 		'workspace.newTitle': 'New workspace',
@@ -87,6 +89,7 @@ const translations: Record<Language, Record<string, string>> = {
 		'workspace.newWeeklyTitle': 'New weekly plan',
 		'workspace.weeklyNamePlaceholder': 'File name, e.g. "Week 3"',
 		'workspace.defaultWeeklyName': 'Week {n}',
+		'workspace.templateNotFound': 'Template file {file} not found — using the built-in empty template',
 		'settings.backup': 'Backup',
 		'settings.backupEnabled': 'Periodic backup',
 		'settings.backupEnabledDesc': 'Automatically snapshot the dashboard file into the plugin folder on a schedule.',
@@ -1403,6 +1406,9 @@ const translations: Record<Language, Record<string, string>> = {
 		'settings.workspaceListDesc': '每个工作台对应一个独立的 dashboard.md 文档。路径填写：库内相对路径，不含 .md 后缀（如 dashboard 或 notes/dashboard）。',
 		'settings.workspaceFolder': '周记文件夹',
 		'settings.workspaceFolderDesc': '设置后，横幅将显示该文件夹内所有 Markdown 文件的下拉选择框，+ 按钮会在该文件夹内新建空白周计划。清空则恢复数字切换按钮。',
+		'settings.workspaceTemplate': '新建看板模板文件',
+		'settings.workspaceTemplateDesc': '点击 + 新建周计划时，将此 Markdown 文件的内容复制为新看板的初始内容。路径填写：库内相对路径，不含 .md 后缀（如 模板/周计划模板）。文件不存在时回退到内置空白模板。',
+		'workspace.templateNotFound': '未找到模板文件 {file}，已使用内置空白模板',
 
 		// Workspace switcher
 		'workspace.newTitle': '新建工作台',
