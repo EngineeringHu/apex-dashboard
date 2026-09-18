@@ -155,6 +155,14 @@ export function sanitizeWorkspaceFileBase(name: string): string {
 	return out.replace(/\s+/g, ' ').trim();
 }
 
+/** Month/day numbers of the Sunday that starts the week containing `now`
+    (weeks begin on Sunday): Fri 2026-09-18 -> { month: 9, day: 13 }; on a
+    Sunday the date itself. Month/year rollovers normalize naturally. */
+export function weekStartMonthDay(now: Date): { month: number; day: number } {
+	const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+	return { month: sunday.getMonth() + 1, day: sunday.getDate() };
+}
+
 /** Next free file path inside `folder`: `<folder>/<base>` when free, else
     `<folder>/<base>-<n>` on collision. Auto-numbered fallback when the
     preferred name sanitizes to empty. `exists` receives the extensionless

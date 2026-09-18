@@ -19,6 +19,7 @@
 		"test:media-thumb-size": "esbuild scripts/verify-media-thumb-size.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-media-thumb-size.cjs --alias:obsidian=./scripts/obsidian-stub.ts --log-level=warning && node node_modules/.tmp/verify-media-thumb-size.cjs",
 		"test:countdown-picker": "esbuild scripts/verify-countdown-picker.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-countdown-picker.cjs --alias:obsidian=./scripts/obsidian-stub.ts --log-level=warning && node node_modules/.tmp/verify-countdown-picker.cjs",
 		"test:gallery-placeholder": "esbuild scripts/verify-gallery-placeholder.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-gallery-placeholder.cjs --alias:obsidian=./scripts/obsidian-stub.ts --log-level=warning && node node_modules/.tmp/verify-gallery-placeholder.cjs",
+		"test:week-start-name": "esbuild scripts/verify-week-start-name.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-week-start-name.cjs --log-level=warning && node node_modules/.tmp/verify-week-start-name.cjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},
