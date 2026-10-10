@@ -1,0 +1,1 @@
+(()=>({open:String(app.setting.open),tab:String(app.setting.openTabById),rootClass:app.setting.containerEl?.className,windows:app.workspace.getLeavesOfType('apex-dashboard-view').length,settingKeys:Object.keys(app.setting).filter(k=>/open|window|active|modal|tab/i.test(k))}))()

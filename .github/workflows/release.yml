@@ -29,15 +29,17 @@ jobs:
               uses: actions/attest-build-provenance@v2
               with:
                   subject-path: |
-                      main.js
-                      manifest.json
-                      styles.css
+                      dist/main.js
+                      dist/manifest.json
+                      dist/styles.css
+                      dist/secure-worker.js
 
             - name: Create GitHub release
               uses: softprops/action-gh-release@v2
               with:
                   files: |
-                      main.js
-                      manifest.json
-                      styles.css
+                      dist/main.js
+                      dist/manifest.json
+                      dist/styles.css
+                      dist/secure-worker.js
                   generate_release_notes: true

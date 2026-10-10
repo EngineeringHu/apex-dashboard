@@ -1,0 +1,1 @@
+(async()=>{const s=app.plugins.plugins['apex-dashboard'].secure;if(s.session.active)throw Error('Plaintext session is active; do not reload');await s.lockAll();return 'Protected edits saved and views locked';})()

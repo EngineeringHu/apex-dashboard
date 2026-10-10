@@ -1,0 +1,15 @@
+import {mkdir,writeFile,readFile} from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createRecipient} from '../src/secure/format.mjs';
+import {encryptWeekly} from '../dist/tools/encrypt-weekly.mjs';
+const project=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const dir=path.join(project,'test-output','offline-windows-'+crypto.randomUUID());
+await mkdir(path.join(dir,'input'),{recursive:true});await mkdir(path.join(dir,'encrypted'));await mkdir(path.join(dir,'exported'));
+const keyring=path.join(dir,'input','.apex-weekly-keyring.json');
+await writeFile(keyring,JSON.stringify(await createRecipient('abc')));
+const md='# 独立测试\n## 备忘\nSynthetic terminal test\n![[sample.png]]\n';
+await writeFile(path.join(dir,'input','测试.md'),md);await writeFile(path.join(dir,'input','sample.png'),Buffer.from([137,80,78,71,1,2,3]));
+await encryptWeekly({input:path.join(dir,'input','测试.md'),output:path.join(dir,'encrypted','测试.apexenc'),keyring});
+const info={dir,input:path.join(dir,'input','测试.md'),cipher:path.join(dir,'encrypted','测试.apexenc'),output:path.join(dir,'exported','测试.md')};
+await writeFile(path.join(project,'test-output','offline-windows-latest.json'),JSON.stringify(info));console.log(JSON.stringify(info));

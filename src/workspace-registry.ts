@@ -185,3 +185,14 @@ export function nextFolderWorkspacePath(
 	if (!exists(`${folder}/${auto}`)) return `${folder}/${auto}`;
 	return `${folder}/week-${Date.now()}`;
 }
+
+/** Template paths retain explicit extensions; an omitted extension prefers .md, then .apexenc. */
+export function normalizeTemplatePath(value: unknown): string {
+ if(typeof value!=='string')return '';
+ return value.trim().replace(/\\/g,'/').replace(/^\/+/,'');
+}
+export function workspaceTemplateCandidates(value: unknown): string[] {
+ const path=normalizeTemplatePath(value);
+ if(!path||path.includes(':')||path.split('/').some(p=>p==='..'||p==='.'||!p))return [];
+ return /\.(md|apexenc)$/i.test(path)?[path]:[path+'.md',path+'.apexenc'];
+}

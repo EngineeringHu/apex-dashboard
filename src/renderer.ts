@@ -1747,7 +1747,12 @@ export function renderSection(column: DashboardColumn, callbacks: RenderCallback
 	el.dataset.sectionType = sectionType;
 
 	const collapsed = getCollapsedSections(app);
-	if (collapsed.has(column.name)) {
+	const protectedLocked = callbacks.getSectionLocked?.(column);
+	if (protectedLocked !== undefined) {
+		el.dataset.secureId = column.protectedBlockId ?? '';
+		el.dataset.secureLocked = String(protectedLocked);
+	}
+	if (protectedLocked === true || (protectedLocked === undefined && collapsed.has(column.name))) {
 		el.addClass('dashboard-section-row--collapsed');
 	}
 
@@ -1791,6 +1796,7 @@ export function renderSection(column: DashboardColumn, callbacks: RenderCallback
 
 	titleEl.addEventListener('dblclick', (e) => {
 		e.stopPropagation();
+		if (protectedLocked) { callbacks.onSectionLockToggle?.(column); return; }
 		const currentName = titleEl.getText();
 		titleEl.empty();
 		const input = titleEl.createEl('input', {
@@ -1833,6 +1839,7 @@ export function renderSection(column: DashboardColumn, callbacks: RenderCallback
 	toggle.setAttribute('aria-label', t('renderer.toggleSection'));
 	toggle.addEventListener('click', (e) => {
 		e.stopPropagation();
+		if (callbacks.onSectionLockToggle) { callbacks.onSectionLockToggle(column); return; }
 		const isNowCollapsed = el.hasClass('dashboard-section-row--collapsed');
 		if (isNowCollapsed) {
 			el.removeClass('dashboard-section-row--collapsed');
@@ -1843,6 +1850,13 @@ export function renderSection(column: DashboardColumn, callbacks: RenderCallback
 		}
 		saveCollapsedSections(app, collapsed);
 	});
+	if (protectedLocked !== undefined) {
+		toggle.setAttribute('aria-label', protectedLocked ? '展开并解锁' : '收起并锁定');
+		toggle.setAttribute('title', protectedLocked ? '输入密码后展开' : '保存密文并锁定此分区');
+		toggle.setAttribute('tabindex', '0');
+		toggle.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle.click();} });
+		if (protectedLocked) return el;
+	}
 
 		const headerActions = header.createDiv({ cls: 'dashboard-section-header-actions' });
 

@@ -76,6 +76,14 @@ export function parse(markdown: string): DashboardData {
 	return data;
 }
 
+/** Read authenticated layout metadata without needing encrypted section bodies. */
+export function parseDashboardShell(markdown: string): DashboardData {
+	const data = parse(markdown);
+	const { frontmatter } = splitFrontmatter(markdown);
+	return { ...data, columns: Array.isArray(frontmatter.columns)
+		? parseColumnDefs(frontmatter).map(column => ({ ...column, cards: [] })) : [] };
+}
+
 export function serialize(data: DashboardData): string {
 	const lines: string[] = [];
 

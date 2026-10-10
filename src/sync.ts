@@ -34,9 +34,31 @@ type DataCallback = (data: DashboardData, source: DashboardUpdateSource) => void
 type TaskDropMode = 'before' | 'after' | 'nest';
 
 export class SyncEngine {
+	private memorySave: ((data: DashboardData) => Promise<void>) | null = null;
+	/** Isolated protected view: never registers file watchers or writes Markdown. */
+	initMemory(data: DashboardData, save: (data: DashboardData) => Promise<void>): void {
+		this.data = data;
+		this.memorySave = save;
+	}
+	clearMemory(): void {
+		this.destroy(); this.data = null; this.memorySave = null; this.callbacks = [];
+	}
+	async flushMemory(): Promise<void> {
+		if (this.deferredWriteTimer !== null) {
+			window.clearTimeout(this.deferredWriteTimer); this.deferredWriteTimer = null;
+			if (this.memorySave && this.data) await this.memorySave(this.data);
+		}
+	}
+	async flushPending(): Promise<void> {
+		if(this.deferredWriteTimer!==null){window.clearTimeout(this.deferredWriteTimer);this.deferredWriteTimer=null;if(this.data)await this.writeToDisk(true);}
+		await this.writeQueue;
+		if(this.lastWriteError)throw this.lastWriteError;
+	}
+	private lastWriteError:Error|null=null;
 	private app: App;
 	private settings: DashboardSettings;
 	private file: TFile | null = null;
+	getFilePath():string{return this.file?.path??'';}
 	private data: DashboardData | null = null;
 	private debounceTimer: number | null = null;
 	private readonly debounceMs = 300;
@@ -46,7 +68,7 @@ export class SyncEngine {
 	private static readonly BACKUP_DIR = '.dashboard-backup';
 	private static readonly MAX_BACKUPS = 5;
 
-	constructor(app: App, settings: DashboardSettings) {
+	constructor(app: App, settings: DashboardSettings, private allowFileAccess?:(path:string,exists:boolean)=>boolean) {
 		this.app = app;
 		this.settings = settings;
 	}
@@ -884,6 +906,7 @@ export class SyncEngine {
 		const rawPath = this.settings.dashboardFile.trim();
 		const path = rawPath.endsWith('.md') ? rawPath : `${rawPath}.md`;
 		const existing = this.app.vault.getFileByPath(path);
+		if(this.allowFileAccess&&!this.allowFileAccess(path,!!existing))throw Error('周记正在切换或已转换为加密文件，请重新选择工作台');
 		if (existing) {
 			this.file = existing;
 			return;
@@ -1023,6 +1046,11 @@ export class SyncEngine {
 	 * without triggering a full-board re-render.
 	 */
 	private async writeToDisk(silent = false): Promise<void> {
+		if (this.memorySave && this.data) {
+			await this.memorySave(this.data);
+			if (!silent) this.notifyCallbacks('local');
+			return;
+		}
 		if (!this.data || !this.file) return;
 
 		const fileRef = this.file;
@@ -1039,6 +1067,7 @@ export class SyncEngine {
 
 				// Safety: skip write if new content is drastically smaller
 				if (current.length > 0 && content.length < current.length * 0.3) {
+					this.lastWriteError=new Error('工作台有尚未保存的编辑，请先完成保存再切换加密');
 					console.warn('Dashboard write skipped: new content significantly smaller than current file');
 					return;
 				}
@@ -1047,7 +1076,9 @@ export class SyncEngine {
 				await this.createBackup(current);
 
 				await this.app.vault.modify(fileRef, content);
+				this.lastWriteError=null;
 			} catch (err) {
+				this.lastWriteError=err instanceof Error?err:new Error('工作台保存失败');
 				console.error('Dashboard sync write failed:', err);
 			} finally {
 				this.writeQueuePending--;

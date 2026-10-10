@@ -1,4 +1,4 @@
-import { Menu, setIcon } from 'obsidian';
+import { Menu, Notice, setIcon } from 'obsidian';
 import type DashboardPlugin from './main';
 import { t } from './i18n';
 import { showPromptDialog } from './prompt-dialog';
@@ -19,7 +19,7 @@ async function promptNewWorkspace(plugin: DashboardPlugin): Promise<void> {
 		// board created any day of the week is named after that week's start.
 		const { month, day } = weekStartMonthDay(new Date());
 		const fallback = t('workspace.defaultWeeklyName', {
-			n: plugin.folderWorkspaceFiles().length + 1,
+			n: plugin.folderWorkspaceFiles().length + (plugin.secure?.workspaceFiles().filter(file => file.parent?.path === plugin.workspaceFolder()).length ?? 0) + 1,
 			month,
 			day,
 		});
@@ -130,7 +130,7 @@ export function renderWorkspaceSwitcher(container: HTMLElement, plugin: Dashboar
 	setIcon(addBtn, 'plus');
 	addBtn.addEventListener('click', (e) => {
 		e.stopPropagation();
-		void promptNewWorkspace(plugin);
+		void promptNewWorkspace(plugin).catch(error=>new Notice(error instanceof Error?error.message:'新建工作台失败'));
 	});
 }
 

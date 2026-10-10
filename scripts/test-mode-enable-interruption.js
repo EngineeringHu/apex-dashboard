@@ -1,0 +1,6 @@
+(async()=>{const c=globalThis.__apexModeTest;if(!c)throw Error('No fixture');const s=app.plugins.plugins['apex-dashboard'].secure,a=app.vault.adapter;
+ const plain=s.mode.plainFiles,get=s.credentials.get,remove=s.mode.removeSource.bind(s.mode);s.mode.plainFiles=()=>plain.call(s.mode).filter(f=>f.basename.startsWith(c.prefix));s.credentials.get=async()=>c.recipient;let count=0;s.mode.removeSource=async(...args)=>{if(++count===2)throw Error('SYNTHETIC_CLEANUP_INTERRUPT');return remove(...args);};
+ c.plainBeforeEnable=new Map();for(const f of s.mode.plainFiles())c.plainBeforeEnable.set(f.basename,await app.vault.read(f));
+ try{let failure;try{await s.mode.setEnabled(true);}catch(e){failure=e;}if(failure?.message!=='SYNTHETIC_CLEANUP_INTERRUPT'||!s.mode.pending)throw Error('Expected pending cleanup');const j=JSON.parse(await a.read('.apex-weekly-mode-change.json'));for(const e of j.entries){if(await s.crypto.call('hash',{value:await a.read(e.target)})!==e.after)throw Error('No complete encrypted replacement');}c.checks.push('interrupted plaintext cleanup leaves every verified encrypted replacement and resumable journal');return 'Encryption cleanup interruption safeguards passed';}
+ finally{s.mode.plainFiles=plain;s.credentials.get=get;s.mode.removeSource=remove;}
+})()

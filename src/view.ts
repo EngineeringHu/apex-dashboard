@@ -1,4 +1,4 @@
-import { Events, HoverParent, HoverPopover, ItemView, MarkdownView, Notice, Platform, setIcon, WorkspaceLeaf, TFile } from 'obsidian';
+import { Events, HoverParent, HoverPopover, ItemView, MarkdownView, Modal, Notice, Platform, setIcon, WorkspaceLeaf, TFile } from 'obsidian';
 import { nowMoment } from './datetime';
 import type DashboardPlugin from './main';
 import type { AppWithCommands } from './obsidian-internal';
@@ -50,6 +50,7 @@ import { archiveCompleted, serializeTasksForNote } from './task-tree';
 import type { App } from 'obsidian';
 import { dashboardMarkdownPath, planDashboardUpdate, type DashboardUpdateSource } from './render-update';
 import { captureScrollStates, restoreScrollStates } from './scroll-preserve';
+import type { ProtectedDashboardBridge } from './protected-dashboard-bridge';
 
 interface DailyNotesOptions {
 	folder?: string;
@@ -85,6 +86,9 @@ function prependAfterFrontmatter(md: string, block: string): string {
 export const DASHBOARD_VIEW_TYPE = 'apex-dashboard-view';
 
 export class DashboardView extends ItemView implements HoverParent {
+	private protectedEditors: Modal[] = [];
+	closeProtectedEditors(): void { for (const modal of this.protectedEditors) modal.close(); this.protectedEditors = []; }
+	private openEditor(modal: Modal): void { if(this.protectedBridge)this.protectedEditors.push(modal); modal.open(); }
 	private plugin: DashboardPlugin;
 	private sync: SyncEngine;
 	private data: DashboardData | null = null;
@@ -151,10 +155,13 @@ export class DashboardView extends ItemView implements HoverParent {
 	// be torn down (detaching its embedded leaf) when the view closes.
 	private popoverModal: NotePopoverModal | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: DashboardPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: DashboardPlugin, private protectedBridge?: ProtectedDashboardBridge) {
 		super(leaf);
 		this.plugin = plugin;
-		this.sync = new SyncEngine(this.app, this.plugin.settings);
+		this.sync = new SyncEngine(this.app, this.plugin.settings, (path,exists)=>{
+			const mode=this.plugin.secure?.mode;
+			return !mode||(!mode.busy&&!mode.pending&&(exists||!mode.enabled||!path.startsWith('周记/')));
+		});
 		this.sync.onDataUpdate((data, source) => {
 			this.handleDataUpdate(data, source);
 		});
@@ -177,7 +184,12 @@ export class DashboardView extends ItemView implements HoverParent {
 		this.isOpening = true;
 		const revision = ++this.lifecycleRevision;
 		this.sync.updateSettings(this.plugin.settings);
-		await this.sync.init();
+		if (this.protectedBridge) this.sync.initMemory(this.protectedBridge.data(), data => this.protectedBridge!.save(data));
+		else try{await this.sync.init();}catch(error){
+			this.isOpening=false;this.contentEl.empty();
+			this.contentEl.createEl('p',{text:error instanceof Error?error.message:'工作台尚未就绪'});
+			this.contentEl.createEl('button',{text:'重新选择工作台'}).onclick=()=>void this.plugin.secure.pick();return;
+		}
 		if (revision !== this.lifecycleRevision) return;
 		// The banner "streak" auto-detects the Daily Notes core plugin, whose
 		// internal-plugins state may report as not-yet-enabled during the very
@@ -239,6 +251,7 @@ export class DashboardView extends ItemView implements HoverParent {
 	}
 
 	async onClose(): Promise<void> {
+		this.closeProtectedEditors();
 		this.lifecycleRevision++;
 		this.isOpening = false;
 		this.isOpen = false;
@@ -267,7 +280,21 @@ export class DashboardView extends ItemView implements HoverParent {
 		this.readingUnsubscribe?.();
 		this.readingUnsubscribe = null;
 		this.sync.destroy();
+		if (this.protectedBridge) { this.sync.clearMemory(); this.data = null; }
 	}
+
+	setProtectedData(data: DashboardData): void {
+		if (!this.protectedBridge) throw Error('Not a protected dashboard');
+		this.sync.initMemory(data, current => this.protectedBridge!.save(current));
+		this.data = data;
+		if (this.isOpen) this.render(data);
+	}
+	async flushProtected(): Promise<void> { await this.sync.flushMemory(); }
+	async flushBeforeEncryption(): Promise<void> {
+		if(this.containerEl.contains(document.activeElement)) (document.activeElement as HTMLElement)?.blur();
+		this.closeProtectedEditors();await this.sync.flushPending();
+	}
+	workspacePath():string{return this.sync.getFilePath();}
 
 	private handleDataUpdate(data: DashboardData, source: DashboardUpdateSource): void {
 		const previous = this.data;
@@ -309,7 +336,9 @@ export class DashboardView extends ItemView implements HoverParent {
 	 *  Settings objects are replaced (not mutated) on every save, so the fresh
 	 *  reference must be pushed into the engine before it re-resolves the file. */
 	async applyWorkspaceSwitch(): Promise<void> {
+		if(this.plugin.secure.mode.busy||this.plugin.secure.mode.pending)return;
 		this.sync.updateSettings(this.plugin.settings);
+		if(!this.isOpen){await this.onOpen();return;}
 		await this.sync.switchFile();
 	}
 
@@ -445,6 +474,7 @@ export class DashboardView extends ItemView implements HoverParent {
 		const kanban = kanbanWrapper.createDiv({ cls: 'dashboard-kanban' });
 		renderDashboard(kanban, data, this.createCallbacks(), this.app, this.plugin.settings, this);
 		setupDragAndDrop(kanban, this.createCallbacks(), this.dndCleanupFns);
+		this.protectedBridge?.decorate(container);
 		// Library config event delegation
 		kanban.addEventListener('dashboard-library-config', ((e: CustomEvent) => {
 			const { columnName } = e.detail as { columnName: string };
@@ -1010,8 +1040,8 @@ export class DashboardView extends ItemView implements HoverParent {
 		this.cleanupFns.push(() => root.removeEventListener('click', outsideHandler));
 	}
 
-	private createCallbacks() {
-		return {
+	private createCallbacks(): import('./types').RenderCallbacks {
+		const callbacks: import('./types').RenderCallbacks = {
 			onCardEdit: (card: DashboardCard) => this.openCardEditModal(card),
 			onOpenNoteInPopover: (file: TFile, subpath?: string) => this.openNote(file, subpath),
 			onCardDelete: async (cardId: string) => {
@@ -1130,6 +1160,7 @@ export class DashboardView extends ItemView implements HoverParent {
 					});
 				},
 		};
+		return this.protectedBridge ? this.protectedBridge.callbacks(callbacks) : callbacks;
 	}
 
 	private handleFileDrop(cardId: string, filePath: string): void {
@@ -1319,14 +1350,14 @@ export class DashboardView extends ItemView implements HoverParent {
 		const modal = new BannerEditModal(this.app, data.banner, (updates) => {
 			void this.sync.updateBanner(updates);
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openCardEditModal(card: DashboardCard): void {
 		const modal = new CardEditModal(this.app, card, (updates) => {
 			void this.sync.updateCard(card.id, updates);
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openNotePopover(file: TFile, subpath?: string, line?: number): void {
@@ -1335,7 +1366,7 @@ export class DashboardView extends ItemView implements HoverParent {
 		this.popoverModal?.close();
 		const modal = new NotePopoverModal(this.app, file, subpath, line);
 		this.popoverModal = modal;
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	/** Opens a note on card click. Honors the "disable popover" setting: when
@@ -1382,7 +1413,7 @@ export class DashboardView extends ItemView implements HoverParent {
 		const modal = new AddSectionModal(this.app, (name, sectionType) => {
 			void this.addColumnWithType(name, sectionType);
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openWidgetTypeModal(colName: string): void {
@@ -1393,7 +1424,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				this.openTrackerConfigModal(colName);
 			}
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	/** Sticky ("便利贴") sections: choose memo or todo before the card is created. */
@@ -1409,7 +1440,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				void this.sync.addCard(colName, { type: 'generic', title: t('sync.memoTitle', { date }) });
 			}
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openWeatherConfigModal(colName: string): void {
@@ -1420,7 +1451,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				weatherConfig: config,
 			});
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openTrackerConfigModal(colName: string): void {
@@ -1431,7 +1462,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				trackerConfig: config,
 			});
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openTemplatePicker(colName: string): void {
@@ -1447,7 +1478,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				});
 			},
 		);
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openLibraryConfigModal(colName: string): void {
@@ -1465,7 +1496,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				void this.sync.updateLibraryConfig(colName, config);
 			},
 		);
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openDataviewConfigModal(colName: string): void {
@@ -1476,7 +1507,7 @@ export class DashboardView extends ItemView implements HoverParent {
 			existing,
 			(config) => { void this.sync.updateDataviewConfig(colName, config); },
 		);
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	/** Images/videos sections: the config currently manages the excluded-folder
@@ -1488,7 +1519,7 @@ export class DashboardView extends ItemView implements HoverParent {
 			column?.libraryConfig,
 			(config) => { void this.sync.updateLibraryConfig(colName, config); },
 		);
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openWereadConfigModal(colName: string): void {
@@ -1502,7 +1533,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				categories,
 				(config) => { void this.sync.updateWereadConfig(colName, config); },
 			);
-			modal.open();
+			this.openEditor(modal);
 		})();
 	}
 
@@ -1622,6 +1653,7 @@ export class DashboardView extends ItemView implements HoverParent {
 		for (const fn of this.dndCleanupFns) fn();
 		this.dndCleanupFns = [];
 		setupDragAndDrop(kanban, callbacks, this.dndCleanupFns);
+		this.protectedBridge?.decorate(this.contentEl);
 		return true;
 	}
 
@@ -1678,14 +1710,14 @@ export class DashboardView extends ItemView implements HoverParent {
 			libraryConfig?.groupMode,
 			libraryConfig?.visibleProperties,
 		);
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openAddActionModal(): void {
 		const modal = new AddActionModal(this.app, (action) => {
 			void this.sync.addQuickAction(action);
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private openEditActionModal(action: QuickAction): void {
@@ -1698,7 +1730,7 @@ export class DashboardView extends ItemView implements HoverParent {
 			},
 			action,
 		);
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private async deleteColumn(columnName: string, columnIndex?: number): Promise<void> {
@@ -1730,7 +1762,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				body: `[[${link.path}]]`,
 			});
 		});
-		modal.open();
+		this.openEditor(modal);
 	}
 
 	private async promptAddColumn(): Promise<void> {
@@ -2222,6 +2254,6 @@ export class DashboardView extends ItemView implements HoverParent {
 				void this.sync.editTaskReminder(cardId, taskPath, newReminder);
 			},
 		);
-		modal.open();
+		this.openEditor(modal);
 	}
 }

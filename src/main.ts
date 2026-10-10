@@ -5,6 +5,7 @@ import { DashboardView, DASHBOARD_VIEW_TYPE } from './view';
 import { BackupService } from './backup-service';
 import { setLanguage, t } from './i18n';
 import { DataviewGuideModal } from './dataview-guide-modal';
+import { SecureController } from './secure/controller';
 
 /** Version of the CURRENT announcement content (DataviewGuideModal). The
  *  announcement pops only when the user's stored version differs from this —
@@ -77,6 +78,7 @@ function migrateCountdowns(raw: Record<string, unknown>): CountdownConfig[] {
 }
 
 export default class DashboardPlugin extends Plugin {
+	secure!: SecureController;
 	settings!: DashboardSettings;
 	backupService!: BackupService;
 	mediaTagService!: MediaTagService;
@@ -85,6 +87,9 @@ export default class DashboardPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 			await this.loadSettings();
+			this.secure = new SecureController(this);
+			await this.secure.mode.load();
+			this.secure.register();
 
 			this.registerView(DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this));
 
@@ -216,6 +221,7 @@ export default class DashboardPlugin extends Plugin {
 
 		// Direct open of a registered dashboard workspace file.
 		this.registerEvent(this.app.workspace.on('file-open', async (file: TFile | null) => {
+			if(this.secure.mode.busy||this.secure.mode.pending)return;
 			if (!file || !(file instanceof TFile) || file.extension !== 'md') return;
 
 			const activeLeaf = this.app.workspace.activeLeaf;
@@ -385,11 +391,10 @@ export default class DashboardPlugin extends Plugin {
 	folderWorkspaceFiles(): string[] {
 		const folder = this.workspaceFolder();
 		if (!folder) return [];
-		const templatePath = normalizeWorkspacePath(this.settings.workspaceTemplateFile);
+		const templatePath = this.secure.templates.file()?.path;
 		return this.app.vault.getMarkdownFiles()
-			.filter((f) => (f.parent?.path ?? '') === folder)
+			.filter((f) => (f.parent?.path ?? '') === folder && f.path !== templatePath)
 			.map((f) => normalizeWorkspacePath(f.path))
-			.filter((p) => p !== templatePath)
 			.sort((a, b) => workspaceFileBaseName(a).localeCompare(workspaceFileBaseName(b), undefined, { numeric: true }));
 	}
 
@@ -400,20 +405,6 @@ export default class DashboardPlugin extends Plugin {
 		return !!folder && isUnderWorkspaceFolder(path, folder) && this.workspaceFileExists(path);
 	}
 
-	/** Content for a new folder-mode board: the configured template file's
-	 *  content when it exists, else the built-in empty weekly template. */
-	private async readWorkspaceTemplate(): Promise<string> {
-		const templatePath = normalizeWorkspacePath(this.settings.workspaceTemplateFile);
-		if (templatePath) {
-			const withExt = templatePath.endsWith('.md') ? templatePath : `${templatePath}.md`;
-			const file = this.app.vault.getFileByPath(withExt);
-			if (file instanceof TFile) {
-				return await this.app.vault.read(file);
-			}
-			new Notice(t('workspace.templateNotFound', { file: withExt }));
-		}
-		return generateEmptyWeeklyMarkdown();
-	}
 
 	/** Switcher choices in folder mode: legacy non-folder registry entries
 	 *  first (with their display names), then the folder's files by basename. */
@@ -434,6 +425,9 @@ export default class DashboardPlugin extends Plugin {
 			seen.add(file);
 			choices.push({ path: file, label: workspaceFileBaseName(file), inFolder: true });
 		}
+		for (const file of this.secure?.workspaceFiles() ?? []) {
+			choices.push({ path: file.path, label: '🔒 ' + file.basename, inFolder: true });
+		}
 		return choices;
 	}
 
@@ -441,6 +435,7 @@ export default class DashboardPlugin extends Plugin {
 	 *  re-renders the banner dropdown, so files added/renamed/removed outside
 	 *  the registry path (e.g. via the file explorer) show up immediately. */
 	private refreshFolderModeSwitcher(...paths: string[]): void {
+		if(this.secure.mode.busy||this.secure.mode.pending)return;
 		const folder = this.workspaceFolder();
 		if (!folder) return;
 		for (const p of paths) {
@@ -453,6 +448,7 @@ export default class DashboardPlugin extends Plugin {
 
 	/** Switch the active workspace. `path` is a registry path (no .md). */
 	async switchWorkspace(path: string): Promise<void> {
+		if (path.endsWith('.apexenc')) { await this.secure.open(path); return; }
 		return this.runWorkspaceOp(() => this.doSwitchWorkspace(path));
 	}
 
@@ -499,6 +495,8 @@ export default class DashboardPlugin extends Plugin {
 	 *  folder; otherwise a default demo board next to the first registry
 	 *  entry. */
 	async createWorkspace(name: string): Promise<void> {
+		await this.secure.mode.assertReady();
+		if (this.workspaceFolder() === '周记' && this.secure.mode.enabled) { await this.secure.create(name); return; }
 		return this.runWorkspaceOp(() => this.doCreateWorkspace(name));
 	}
 
@@ -507,6 +505,8 @@ export default class DashboardPlugin extends Plugin {
 		const folder = this.workspaceFolder();
 		let path: string;
 		let content: string;
+		let rollbackTemplateAssets = async ():Promise<void> => {};
+		let verifyTemplate = async ():Promise<void> => {};
 		if (folder) {
 			path = nextFolderWorkspacePath(
 				folder,
@@ -514,7 +514,13 @@ export default class DashboardPlugin extends Plugin {
 				this.folderWorkspaceFiles().length,
 				(p) => this.workspaceFileExists(p),
 			);
-			content = await this.readWorkspaceTemplate();
+			const template = await this.secure.templates.read();
+			if (!template) return;
+			await this.secure.mode.assertReady();
+			if (folder === '周记' && this.secure.mode.enabled) throw Error('加密开关已变化，请重新新建');
+			const prepared = await this.secure.templates.plain(template, folder);
+			content = prepared.markdown; rollbackTemplateAssets = prepared.rollback;
+			verifyTemplate = () => this.secure.templates.assertCurrent(template);
 			// vault.create() needs every parent folder to exist.
 			if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
 				try {
@@ -533,8 +539,11 @@ export default class DashboardPlugin extends Plugin {
 		}
 		try {
 			const withExt = path.endsWith('.md') ? path : `${path}.md`;
+			await this.secure.mode.assertReady(); await verifyTemplate();
+			if (folder === '周记' && this.secure.mode.enabled) throw Error('加密开关已变化，请重新新建');
 			await this.app.vault.create(withExt, content);
 		} catch (err) {
+			await rollbackTemplateAssets();
 			console.error('Workspace file creation failed:', err);
 			new Notice(t('workspace.createFailed'));
 			return;
@@ -719,6 +728,7 @@ export default class DashboardPlugin extends Plugin {
 	}
 
 	private async doHandleWorkspaceFileDeleted(file: TFile): Promise<void> {
+		if(this.secure.mode.busy||this.secure.mode.pending)return;
 		const entry = normalizeWorkspacePath(file.path);
 		const files = this.settings.workspaceFiles;
 		const idx = files.indexOf(entry);
@@ -752,5 +762,15 @@ export default class DashboardPlugin extends Plugin {
 		}
 		await this.saveSettings();
 		await this.repointAllViews();
+	}
+
+	/** Reconcile converted Markdown once, without reopening deleted source files. */
+	async finishWeeklyModeChange(sources:string[]):Promise<void>{
+		const removed=new Set(sources.filter(p=>p.endsWith('.md')).map(p=>normalizeWorkspacePath(p)));
+		const names=alignWorkspaceNames(this.settings.workspaceFiles,this.settings.workspaceNames);
+		const retained=this.settings.workspaceFiles.map((path,i)=>({path,name:names[i]??''})).filter(x=>!removed.has(x.path));
+		if(!retained.length)retained.push({path:'dashboard',name:''});
+		this.settings={...this.settings,workspaceFiles:retained.map(x=>x.path),workspaceNames:retained.map(x=>x.name),dashboardFile:removed.has(normalizeWorkspacePath(this.settings.dashboardFile))?retained[0]!.path:this.settings.dashboardFile};
+		await this.saveSettings();this.refreshAllDashboards();
 	}
 }

@@ -1,0 +1,22 @@
+import {builtinModules} from 'node:module';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+import {mkdir,copyFile,readFile,writeFile} from 'node:fs/promises';
+import * as esbuild from 'esbuild';
+const root=path.dirname(fileURLToPath(import.meta.url));
+const out=path.join(root,'dist');await mkdir(out,{recursive:true});
+const external=['obsidian','electron',...builtinModules,...builtinModules.map(x=>'node:'+x),'@codemirror/*','@lezer/*'];
+await esbuild.build({absWorkingDir:root,entryPoints:['src/main.ts'],bundle:true,platform:'node',format:'cjs',target:'es2022',external,outfile:path.join(out,'main.js'),minify:true,logLevel:'info'});
+await esbuild.build({absWorkingDir:root,entryPoints:['src/secure/browser-worker.mjs'],bundle:true,platform:'browser',format:'iife',target:'es2022',outfile:path.join(out,'secure-worker.js'),logLevel:'info'});
+await esbuild.build({absWorkingDir:root,entryPoints:['src/secure/node-worker.mjs'],bundle:true,platform:'node',format:'cjs',target:'es2022',outfile:path.join(out,'secure-worker.cjs'),logLevel:'info'});
+const css=await readFile(path.join(root,'styles.css'),'utf8')+'\n'+await readFile(path.join(root,'src/secure/styles.css'),'utf8');
+await writeFile(path.join(out,'styles.css'),css);
+const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8'));
+await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+const toolOut=path.join(out,'tools');await mkdir(path.join(toolOut,'git-hooks'),{recursive:true});
+await writeFile(path.join(toolOut,'decrypt-weekly.mjs'),(await readFile(path.join(root,'tools/decrypt-weekly.mjs'),'utf8')).replace("../src/secure/format.mjs","./apex-crypto.mjs"));
+for(const [source,dest] of [['src/secure/format.mjs','apex-crypto.mjs'],['tools/check-protected-git.mjs','check-protected-git.mjs'],['docs/encryption-format.md','encryption-format.md'],['tools/git-hooks/pre-commit','git-hooks/pre-commit']])await copyFile(path.join(root,source),path.join(toolOut,dest));
+await esbuild.build({absWorkingDir:root,entryPoints:['tools/encrypt-weekly.mjs'],bundle:true,platform:'node',format:'esm',target:'es2022',banner:{js:"import {createRequire as cliCreateRequire} from 'node:module'; const require = cliCreateRequire(import.meta.url);"},outfile:path.join(out,'tools/encrypt-weekly.mjs'),logLevel:'info'});
+for(const name of ['weekly-file-dialog.ps1','解密周记.bat','加密周记.bat','双击工具使用说明.md'])await copyFile(path.join(root,'tools',name),path.join(toolOut,name));
+
+console.log('Built dist/ using project-local dependencies; no vault modified.');

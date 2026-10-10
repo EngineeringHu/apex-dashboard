@@ -69,7 +69,10 @@ const translations: Record<Language, Record<string, string>> = {
 		'settings.workspaceFolder': 'Weekly workspace folder',
 		'settings.workspaceFolderDesc': 'When set, the banner shows a dropdown of every Markdown file in this folder and the + button creates a new empty weekly plan there. Clear it to go back to the numbered pills.',
 		'settings.workspaceTemplate': 'New-board template file',
-		'settings.workspaceTemplateDesc': 'When the + button creates a new weekly plan, the content of this Markdown file is copied as the starting board. Path format: vault-relative, no .md suffix (e.g. templates/week). A missing file falls back to the built-in empty weekly template.',
+		'settings.workspaceTemplateDesc': 'Copy a .md or .apexenc template when creating a board. Use a vault-relative path; without an extension, .md is preferred. Encrypted templates unlock once per Obsidian session, until changed or manually locked. New boards follow the encryption switch; off creates ordinary Markdown.',
+		'settings.templateBrowse': 'Choose template',
+		'settings.templateLock': 'Lock template',
+		'settings.templateLocked': 'Template locked. Creating from it will request its password again.',
 
 		// Workspace switcher
 		'workspace.newTitle': 'New workspace',
@@ -1407,7 +1410,10 @@ const translations: Record<Language, Record<string, string>> = {
 		'settings.workspaceFolder': '周记文件夹',
 		'settings.workspaceFolderDesc': '设置后，横幅将显示该文件夹内所有 Markdown 文件的下拉选择框，+ 按钮会在该文件夹内新建空白周计划。清空则恢复数字切换按钮。',
 		'settings.workspaceTemplate': '新建看板模板文件',
-		'settings.workspaceTemplateDesc': '点击 + 新建周计划时，将此 Markdown 文件的内容复制为新看板的初始内容。路径填写：库内相对路径，不含 .md 后缀（如 模板/周计划模板）。文件不存在时回退到内置空白模板。',
+		'settings.workspaceTemplateDesc': '支持 .md 和 .apexenc，填写库内相对路径或点击选择；省略后缀时优先匹配 .md。加密模板在本次 Obsidian 会话中解锁一次，修改、更换或手动锁定模板后重新验证。新看板跟随加密开关；关闭时生成普通 Markdown。',
+		'settings.templateBrowse': '选择模板',
+		'settings.templateLock': '锁定模板',
+		'settings.templateLocked': '模板已锁定，下次使用时需要重新输入密码。',
 		'workspace.templateNotFound': '未找到模板文件 {file}，已使用内置空白模板',
 
 		// Workspace switcher

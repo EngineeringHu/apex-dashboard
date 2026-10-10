@@ -1,0 +1,18 @@
+.apex-protected-root { padding: 20px; overflow-y: auto; }
+.apex-protected-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 0; }
+.apex-protected-toolbar h2 { flex:1 1 200px; }
+.apex-protected-section { border:1px solid var(--background-modifier-border); border-radius:10px; padding:14px; margin:14px 0; }
+.apex-protected-editor { width:100%; min-height:380px; resize:vertical; font-family:var(--font-monospace); line-height:1.7; }
+.apex-protected-content pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+.apex-protected-image { max-width:100%; max-height:600px; display:block; margin:12px 0; }
+.apex-protected-saving .apex-protected-content { visibility:hidden; pointer-events:none; }
+.apex-protected-saving::after { content:'正在保存密文并锁定…'; }
+.apex-protected-content .dashboard-section-title { pointer-events:none; }
+.view-content.apex-protected-host { padding:0; overflow:hidden; display:flex; flex-direction:column; }
+.apex-protected-dashboard { display:flex; flex:1; min-height:0; width:100%; height:100%; flex-direction:column; }
+.apex-protected-dashboard > .view-header { display:none; }
+.apex-protected-dashboard > .view-content { flex:1; min-height:0; }
+.apex-protected-section-actions { display:inline-flex; align-items:center; gap:4px; }
+.apex-protected-board .dashboard-section-row[data-secure-locked="true"] .dashboard-section-resize-handle { display:none; }
+.apex-protected-assets { padding:8px 16px; display:flex; flex-wrap:wrap; gap:8px; }
+.apex-protected-whole { overflow:auto; padding:16px; height:100%; }

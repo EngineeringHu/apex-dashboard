@@ -10,7 +10,7 @@ import { ThemeStudioModal } from './theme-studio-modal';
 import { QuickNoteConfigModal } from './quick-note-config-modal';
 import { showConfirmDialog } from './confirm-dialog';
 import { showPromptDialog } from './prompt-dialog';
-import { normalizeWorkspaceFolder, normalizeWorkspacePath } from './workspace-registry';
+import { normalizeWorkspaceFolder, normalizeWorkspacePath, normalizeTemplatePath } from './workspace-registry';
 import { DEFAULT_TICKTICK_TZ, isValidTz } from './ticktick-tz';
 import { PathPickerModal } from './path-picker-modal';
 import { SUPPORT_IMAGE_DATA_URL } from './assets/support-image';
@@ -61,8 +61,8 @@ export class DashboardSettingTab extends PluginSettingTab {
 				type: 'group',
 				items: [
 					{
-						name: t('settings.general'),
-						searchable: false, // the tab bar, not a setting
+						name: t('settings.general') + ' · navigation',
+						searchable: false, // stable unique key for the tab bar
 						render: (setting) => {
 							asBlock(setting);
 							this.renderTabBar(setting.settingEl);
@@ -71,7 +71,7 @@ export class DashboardSettingTab extends PluginSettingTab {
 					{
 						name: t('settings.general'),
 						desc: t('settings.languageDesc'),
-						aliases: [t('settings.language'), t('settings.stylePreset'), t('settings.recentCount'), t('quickNote.title'), t('settings.workspaceList')],
+						aliases: [t('settings.language'), t('settings.stylePreset'), t('settings.recentCount'), t('quickNote.title'), t('settings.workspaceList'), '周记加密', '周记统一密码', '周记明文文件名'],
 						render: (setting) => {
 							asBlock(setting);
 							onPage('general')(setting);
@@ -133,7 +133,7 @@ export class DashboardSettingTab extends PluginSettingTab {
 						// the calendar section above and the lunar/year sections
 						// below. The cards stay searchable through the
 						// widgetTheme entry's aliases.
-						name: t('settings.widgetTheme'),
+						name: t('settings.widgetTheme') + ' · continuation',
 						searchable: false,
 						render: (setting) => {
 							asBlock(setting);
@@ -255,6 +255,30 @@ export class DashboardSettingTab extends PluginSettingTab {
 	/** Top block: language, style, quick notes, paths. Shared by display()
 	 *  (pre-1.13) and the declarative General section (1.13+). */
 	private renderGeneralSettings(containerEl: HTMLElement): void {
+		const mode=this.plugin.secure.mode;
+		new Setting(containerEl).setName('周记加密')
+			.setDesc('统一切换周记目录中的全部周记。开启：分区展开需密码，收起锁定；关闭：转换为普通 .md，搜索、Dataview 和工作台正常使用，磁盘及 Git 中为明文。')
+			.addToggle(toggle=>toggle.setValue(mode.enabled).setDisabled(mode.busy||mode.pending).onChange(async value=>{
+				toggle.setDisabled(true);try{await mode.setEnabled(value);}catch(error){new Notice(error instanceof Error?error.message:'切换未完成，请保留文件并重试',15000);}
+				finally{toggle.setValue(mode.enabled);this.refresh();}
+			}));
+		if(mode.pending)new Setting(containerEl).setName('上次切换尚未完成').setDesc('保留原文件和转换结果，继续校验后完成切换。')
+			.addButton(button=>button.setButtonText('继续切换').onClick(async()=>{button.setDisabled(true);try{await mode.resume();}catch(error){new Notice((error as Error).message,15000);}finally{this.refresh();}}));
+		else if(mode.enabled?mode.plainFiles().length>0:this.plugin.secure.files().length>0)new Setting(containerEl).setName('现有周记格式尚未统一')
+			.setDesc('将已有周记统一转换为当前开关对应的格式；模板文件不参与转换。')
+			.addButton(button=>button.setButtonText(mode.enabled?'统一加密现有周记':'统一转换为普通 Markdown').onClick(async()=>{button.setDisabled(true);try{await mode.setEnabled(mode.enabled);}catch(error){new Notice((error as Error).message,15000);}finally{this.refresh();}}));
+		if(this.plugin.secure.session.active)new Setting(containerEl).setName('旧版遗留数据').setDesc('先保存旧版遗留的编辑并完成恢复，再使用加密开关。')
+			.addButton(button=>button.setButtonText('完成恢复').onClick(async()=>{try{await this.plugin.secure.session.finish();}catch(error){new Notice((error as Error).message,15000);}finally{this.refresh();}}));
+		new Setting(containerEl).setName('周记统一密码')
+			.setDesc('设置一次后，新建无需输入密码；展开分区时验证。支持至少 3 个字符，已有周记会验证原密码并迁移。')
+			.addButton(button => button.setButtonText('设置 / 更改密码').onClick(() => {
+				void this.plugin.secure.credentials.setup().catch(error => new Notice(error.message,10000));
+			}));
+		new Setting(containerEl).setName('周记明文文件名')
+			.setDesc('新周记直接使用输入的名称。恢复旧文件名需验证密码，正文和附件继续加密。')
+			.addButton(button => button.setButtonText('恢复旧文件名').onClick(() => {
+				void this.plugin.secure.credentials.restoreNames().catch(error => new Notice(error.message,10000));
+			}));
 		new Setting(containerEl)
 			.setName(t('settings.language'))
 			.setDesc(t('settings.languageDesc'))
@@ -463,29 +487,35 @@ export class DashboardSettingTab extends PluginSettingTab {
 			text.inputEl.addEventListener('blur', () => { void commit(); });
 		});
 
-		// Template file the folder-mode + button copies. Same path convention
-		// as the workspace rows (vault-relative, no .md); empty = built-in
-		// empty weekly template.
 		const templateSetting = new Setting(containerEl)
 			.setName(t('settings.workspaceTemplate'))
 			.setDesc(t('settings.workspaceTemplateDesc'));
+		let templateInput: TextComponent;
+		const setTemplate = async (raw: string): Promise<void> => {
+			const value = normalizeTemplatePath(raw);
+			if (value === normalizeTemplatePath(this.plugin.settings.workspaceTemplateFile)) return;
+			this.plugin.secure.templates.clear();
+			this.plugin.settings = { ...this.plugin.settings, workspaceTemplateFile: value };
+			await this.plugin.saveSettings();
+			this.plugin.refreshAllDashboards();
+		};
 		templateSetting.addText(text => {
-			text.setPlaceholder('模板/周计划模板')
+			templateInput = text;
+			text.setPlaceholder('模板/周计划模板.apexenc')
 				.setValue(this.plugin.settings.workspaceTemplateFile ?? '');
-			const commit = async () => {
-				const value = normalizeWorkspacePath(text.inputEl.value);
-				if (value === normalizeWorkspacePath(this.plugin.settings.workspaceTemplateFile)) return;
-				this.plugin.settings = { ...this.plugin.settings, workspaceTemplateFile: value };
-				await this.plugin.saveSettings();
-			};
-			text.inputEl.addEventListener('keydown', (e) => {
-				if (e.key === 'Enter') {
-					e.preventDefault();
-					void commit();
-				}
+			text.inputEl.addEventListener('keydown', e => {
+				if (e.key === 'Enter') { e.preventDefault(); void setTemplate(text.inputEl.value); }
 			});
-			text.inputEl.addEventListener('blur', () => { void commit(); });
+			text.inputEl.addEventListener('blur', () => { void setTemplate(text.inputEl.value); });
 		});
+		templateSetting.addButton(button => button.setButtonText(t('settings.templateBrowse')).onClick(() => {
+			new PathPickerModal(this.app, 'template', path => {
+				templateInput.setValue(path); void setTemplate(path);
+			}).open();
+		}));
+		templateSetting.addButton(button => button.setButtonText(t('settings.templateLock')).onClick(() => {
+			this.plugin.secure.templates.clear(); new Notice(t('settings.templateLocked'));
+		}));
 
 		/** Index of the row being dragged; null when idle. */
 		let dragIndex: number | null = null;

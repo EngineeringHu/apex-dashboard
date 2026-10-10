@@ -1,0 +1,5 @@
+(async()=>{const c=globalThis.__apexCredentialTest;if(!c)return 'No credential test';const s=app.plugins.plugins['apex-dashboard'].secure,a=app.vault.adapter;
+ if(await a.exists('.apex-weekly-rotation.json'))throw Error('Finish test recovery before cleanup');
+ await s.lockAll();for(const path of c.paths){if(c.originals.has(path)||!path.startsWith('周记/')||!path.endsWith('.apexenc'))throw Error('Not a fixture path');for(const leaf of app.workspace.getLeavesOfType('apex-protected-view'))if(leaf.view.file?.path===path)await leaf.detach();const f=app.vault.getAbstractFileByPath(path);if(f)await app.vault.delete(f);}
+ for(const [path,hash]of c.originals)if(await s.crypto.call('hash',{value:await s.store.read(path)})!==hash)throw Error('Original ciphertext changed');
+ await a.remove('.apex-weekly-keyring.json');if(c.previous)app.workspace.setActiveLeaf(c.previous,{focus:false});delete globalThis.__apexCredentialTest;await s.lockAll();return 'Synthetic credentials and files removed; original encrypted notes unchanged';})()

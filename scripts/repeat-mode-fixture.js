@@ -1,0 +1,1 @@
+(async()=>{const c=globalThis.__apexModeTest,s=app.plugins.plugins['apex-dashboard'].secure;if(!c||s.mode.pending)throw Error('Invalid fixture');c.encrypted=[];for(const f of s.files().filter(f=>f.basename.startsWith(c.prefix)))c.encrypted.push([f.path,await s.crypto.call('hash',{value:await app.vault.read(f)})]);return 'Fixture checkpoint updated';})()

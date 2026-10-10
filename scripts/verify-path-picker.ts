@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { TFile, TFolder, type App } from 'obsidian';
 import { El, findByClass } from './mini-dom';
 import { PathPickerModal, attachPathPicker } from '../src/path-picker-modal';
+import { normalizeTemplatePath, workspaceTemplateCandidates } from '../src/workspace-registry';
 
 // Vault path picker: file/folder listing, fuzzy filter, pick-by-click and
 // keyboard, and the browse button that writes back into an input.
@@ -15,7 +16,7 @@ interface MockFolder extends TFolder { path: string; name: string }
 
 const file = (path: string): MockFile => {
 	const name = path.split('/').pop()!;
-	return Object.assign(new TFile(), { path, name, basename: name.replace(/\.md$/, '') });
+	return Object.assign(new TFile(), { path, name, basename: name.replace(/\.[^.]+$/, ''), extension: name.split('.').pop()! });
 };
 const folder = (path: string): MockFolder =>
 	Object.assign(new TFolder(), { path, name: path.split('/').pop()! });
@@ -23,7 +24,8 @@ const folder = (path: string): MockFolder =>
 function makeApp(files: string[], folders: string[]): App {
 	const app = {
 		vault: {
-			getMarkdownFiles: () => files.map(file),
+			getMarkdownFiles: () => files.filter(path=>path.endsWith('.md')).map(file),
+            getFiles: () => files.map(file),
 			getAllLoadedFiles: () => [...files.map(file), ...folders.map(folder)],
 		},
 	};
@@ -119,7 +121,24 @@ async function main(): Promise<void> {
 		assert.equal(seen.length, 0, '6: no spurious picks');
 	}
 
-	console.log('verify-path-picker: 6 scenarios OK');
+
+	// Encrypted templates are selectable; unrelated assets never become templates.
+	{
+		const app=makeApp(['Templates/plain.md','Templates/locked.apexenc','Templates/image.png'],[]);
+		let picked='';
+		const modal=new PathPickerModal(app,'template',path=>{picked=path;});
+		modal.onOpen();
+		const rows=findByClass(modal.contentEl as unknown as El,'dashboard-pathpicker-item');
+		assert.equal(rows.length,2,'template picker includes Markdown and encrypted files only');
+		rows[0]!.click();
+		assert.equal(picked,'Templates/locked.apexenc','encrypted extension preserved');
+	}
+	assert.deepEqual(workspaceTemplateCandidates('Templates/weekly'),['Templates/weekly.md','Templates/weekly.apexenc']);
+	assert.deepEqual(workspaceTemplateCandidates('Templates/weekly.apexenc'),['Templates/weekly.apexenc']);
+	assert.deepEqual(workspaceTemplateCandidates('../outside.apexenc'),[]);
+	assert.equal(normalizeTemplatePath(' Templates\\weekly.apexenc '),'Templates/weekly.apexenc');
+
+console.log('verify-path-picker: 7 scenarios and template path resolution OK');
 }
 
 void main();

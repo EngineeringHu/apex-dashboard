@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-02",
+  "sourceFilesVerified": 138,
+  "version": "2.2.1-secure.5",
+  "project": "/home/huyuhao/workStation/02ownWork/obsidian-plugin/apex-dashboard",
+  "oldSourceAbsent": true,
+  "oldVaultSourceAbsent": true,
+  "wslDuplicateZipAbsent": true,
+  "checks": [
+    "TypeScript check",
+    "Build with project-local Linux dependencies",
+    "Encryption and recovery tests",
+    "13 upstream regression suites",
+    "Legacy format recovery",
+    "Obsidian board edit and section encryption",
+    "Obsidian multi-tab locking and whole Markdown editing",
+    "Original encrypted note hashes unchanged",
+    "Git fsck and old stash recovery",
+    "Build and test from /tmp after deleting old sources"
+  ],
+  "notes": "Unrecoverable historical Windows Git bytes retained centrally in docs/migration/unreadable-legacy-git.zip; no impact on current source, tests or healthy Git repository."
+}

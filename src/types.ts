@@ -13,7 +13,7 @@ export interface DashboardSettings {
 	/** Folder whose Markdown files populate the banner file picker (folder
 	    mode); the + button creates new weekly boards there. '' = off. */
 	workspaceFolder: string;
-	/** Vault-relative path (no leading '/', no .md) of the template file whose
+	/** Vault-relative .md or .apexenc path of the template file whose
 	    content is copied by the folder-mode + button. '' = built-in empty
 	    weekly template. */
 	workspaceTemplateFile: string;
@@ -567,6 +567,8 @@ export interface DataviewConfig {
 }
 
 export interface DashboardColumn {
+	/** Runtime-only identity. Never serialized into Markdown/frontmatter. */
+	protectedBlockId?: string;
 	name: string;
 	color: string;
 	sectionType?: string;
@@ -597,6 +599,8 @@ export interface DashboardData {
 }
 
 export interface RenderCallbacks {
+	getSectionLocked?(column: DashboardColumn): boolean;
+	onSectionLockToggle?(column: DashboardColumn): void;
 	onCardEdit(card: DashboardCard): void;
 	/** subpath is the raw `#heading` / `#^block` fragment of a wikilink, when present. */
 	onOpenNoteInPopover(this: void, file: TFile, subpath?: string): void;
