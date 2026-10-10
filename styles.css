@@ -18939,3 +18939,16 @@ body.is-mobile .dashboard-media-item .dashboard-media-tagbtn { opacity: 1; }
 .theme-dark .apex-table-task-delete:hover { color: #ef9a9a; }
 .theme-dark .apex-table-task-add-input::placeholder { color: #bcaaa4; }
 .dashboard-table-hint { margin-top: 8px; font-size: 11px; opacity: .55; text-align: right; }
+
+/* Standard Apex To-Do cards embedded in weekly table cells. */
+.apex-table .apex-table-todo-card { min-width: 190px !important; max-width: none !important; width: 100%; margin: 0; text-align: left; white-space: normal; font-weight: normal; }
+.apex-table-todo-card .dashboard-card-header { cursor: default; padding: 8px; }
+.apex-table-todo-card .dashboard-card-body { padding: 8px; }
+.apex-table-todo-card .dashboard-task-list { min-height: 36px; }
+.apex-table-insert-todo { font-size: .85em; white-space: normal; width: 100%; }
+.apex-table-unplaced { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.apex-table-unplaced > div:first-child { flex-basis: 100%; }
+.dashboard-task-daily-link, .dashboard-task-daily-open { flex: 0 0 auto; padding: 2px; border: none; box-shadow: none; background: transparent; color: var(--text-muted); cursor: pointer; }
+.dashboard-task-daily-link svg, .dashboard-task-daily-open svg { width: 14px; height: 14px; }
+.dashboard-task-daily-open { color: var(--interactive-accent); }
+.apex-daily-link-date { display: flex; align-items: center; gap: 8px; margin: 12px 0; }

@@ -1,0 +1,1 @@
+(() => { let count=0; for(const root of document.querySelectorAll('.apex-dashboard-root')) { if(root.style.left==='-10000px') { root.replaceChildren(); root.remove(); count++; } } return JSON.stringify({removedSyntheticRoots:count}); })()

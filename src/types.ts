@@ -403,6 +403,8 @@ export interface TrackerDataPoint {
 }
 
 export interface TaskItem {
+	/** Vault-relative daily note path; retained when tasks move between cards. */
+	dailyNote?: string;
 	text: string;
 	checked: boolean;
 	reminder?: string;
@@ -599,6 +601,8 @@ export interface DashboardData {
 }
 
 export interface RenderCallbacks {
+	onTableTodoInsert?(columnName: string, row: number, col: number): void;
+	onTaskDailyNoteChange?(cardId: string, taskPath: number[], notePath: string | undefined, expectedText: string): void;
 	getSectionLocked?(column: DashboardColumn): boolean;
 	onSectionLockToggle?(column: DashboardColumn): void;
 	onCardEdit(card: DashboardCard): void;

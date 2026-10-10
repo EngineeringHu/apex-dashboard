@@ -1,4 +1,6 @@
-import { App, Menu, Modal, Platform, TFile, setIcon } from 'obsidian';
+import { type TableSectionCell, parseTableSectionRows, buildMergedTableGrid, serializeMergedGrid, gridToDenseRows, serializeDenseRows, addTableRowAt, deleteTableRowAt, insertTableColumnAt, deleteTableColumnAt, tableCardId, tableCardMarker } from './table-model';
+import { DailyNoteLinkModal } from './task-daily-note-modal';
+import { App, Menu, Modal, Notice, Platform, TFile, setIcon } from 'obsidian';
 import type { HoverParent, EventRef } from 'obsidian';
 import type { DashboardData, DashboardColumn, DashboardCard, RenderCallbacks, TaskItem, DocNode, DashboardSettings, CardSize, TrackerStyle } from './types';
 import { t, getLanguage } from './i18n';
@@ -109,7 +111,7 @@ function relativeLuminance(r: number, g: number, b: number): number {
 	return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
 }
 
-let taskDragSource: { cardId: string; taskPath: number[] } | null = null;
+let taskDragSource: { cardId: string; taskPath: number[]; root: Element | null; table: Element | null } | null = null;
 let docDragSource: { cardId: string; docPath: number[] } | null = null;
 
 // Set once per render pass by renderDashboard so the deep doc/wikilink renderers
@@ -2128,7 +2130,7 @@ export function renderSection(column: DashboardColumn, callbacks: RenderCallback
 			callbacks.onColumnDelete(column.name, data ? data.columns.indexOf(column) : -1);
 		});
 
-		renderTableSection(el, column, (content) => callbacks.onTableContentChange(column.name, content));
+		renderTableSection(el, column, callbacks, app);
 		return el;
 	}
 
@@ -2742,7 +2744,6 @@ function renderTaskItem(
 	renderTextWithLinks(label, task.text, app);
 	label.addEventListener('dblclick', (e) => {
 		e.stopPropagation();
-		const currentText = label.getText();
 		label.empty();
 		item.setAttribute('draggable', 'false');
 
@@ -2759,13 +2760,16 @@ function renderTaskItem(
 		textarea.focus();
 		textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
+		let finished = false;
 		const finish = (save: boolean) => {
+			if (finished) return;
+			finished = true;
 			const newText = textarea.value.trim();
 			if (save && newText && newText !== task.text) {
 				callbacks.onTaskEdit(card.id, path, newText);
 			} else {
 				label.empty();
-				label.setText(currentText);
+				renderTextWithLinks(label, task.text, app);
 			}
 			item.setAttribute('draggable', 'true');
 		};
@@ -2783,6 +2787,29 @@ function renderTaskItem(
 		textarea.addEventListener('blur', () => finish(true));
 	});
 
+	if (callbacks.onTaskDailyNoteChange) {
+		const linkBtn = item.createEl('button', {
+			cls: 'dashboard-task-daily-link', attr: { 'aria-label': t('task.linkDaily'), title: t('task.linkDaily') },
+		});
+		setIcon(linkBtn, 'link');
+		linkBtn.addEventListener('click', e => {
+			e.stopPropagation();
+			new DailyNoteLinkModal(app, task.dailyNote, notePath =>
+				callbacks.onTaskDailyNoteChange!(card.id, path, notePath, task.text)).open();
+		});
+		if (task.dailyNote) {
+			const openBtn = item.createEl('button', {
+				cls: 'dashboard-task-daily-open', attr: { 'aria-label': t('task.openDaily'), title: task.dailyNote },
+			});
+			setIcon(openBtn, 'book-open');
+			openBtn.addEventListener('click', e => {
+				e.stopPropagation();
+				const file = app.vault.getAbstractFileByPath(task.dailyNote!);
+				if (!(file instanceof TFile)) { new Notice(t('task.dailyMissing')); return; }
+				void app.workspace.getLeaf(false).openFile(file);
+			});
+		}
+	}
 	const delBtn = item.createEl('button', {
 		cls: 'dashboard-task-delete',
 		attr: { 'aria-label': t('renderer.deleteTask') },
@@ -2798,7 +2825,7 @@ function renderTaskItem(
 
 	item.addEventListener('dragstart', (e) => {
 		e.stopPropagation();
-		taskDragSource = { cardId: card.id, taskPath: path };
+		taskDragSource = { cardId: card.id, taskPath: path, root: item.closest('.apex-dashboard-root'), table: item.closest('.dashboard-table-wrap') };
 		item.addClass('dashboard-task-item--dragging');
 		if (e.dataTransfer) {
 			e.dataTransfer.effectAllowed = 'move';
@@ -2821,7 +2848,7 @@ function renderTaskItem(
 	item.addEventListener('dragover', (e) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (!taskDragSource) return;
+		if (!taskDragSource || taskDragSource.root !== item.closest('.apex-dashboard-root') || taskDragSource.table !== item.closest('.dashboard-table-wrap')) return;
 		const sameNode = taskDragSource.cardId === card.id &&
 			JSON.stringify(taskDragSource.taskPath) === JSON.stringify(path);
 		if (sameNode) return;
@@ -2844,7 +2871,7 @@ function renderTaskItem(
 		e.preventDefault();
 		e.stopPropagation();
 		clearDragClasses();
-		if (!taskDragSource) return;
+		if (!taskDragSource || taskDragSource.root !== item.closest('.apex-dashboard-root') || taskDragSource.table !== item.closest('.dashboard-table-wrap')) return;
 		const sameNode = taskDragSource.cardId === card.id &&
 			JSON.stringify(taskDragSource.taskPath) === JSON.stringify(path);
 		if (sameNode) return;
@@ -2899,7 +2926,7 @@ function renderTaskBody(container: HTMLElement, card: DashboardCard, callbacks: 
 
 	// When the list is empty, make it a drop target so tasks can be dragged in
 	list.addEventListener('dragover', (e) => {
-		if (!taskDragSource) return;
+		if (!taskDragSource || taskDragSource.root !== list.closest('.apex-dashboard-root') || taskDragSource.table !== list.closest('.dashboard-table-wrap')) return;
 		if (taskDragSource.cardId === card.id) return;
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -2914,8 +2941,9 @@ function renderTaskBody(container: HTMLElement, card: DashboardCard, callbacks: 
 
 	list.addEventListener('drop', (e) => {
 		e.preventDefault();
+		e.stopPropagation();
 		list.removeClass('dashboard-task-list--drop-target');
-		if (!taskDragSource) return;
+		if (!taskDragSource || taskDragSource.root !== list.closest('.apex-dashboard-root') || taskDragSource.table !== list.closest('.dashboard-table-wrap')) return;
 		if (taskDragSource.cardId === card.id) return;
 		callbacks.onTaskMoveToCard(taskDragSource.cardId, taskDragSource.taskPath, card.id, [card.tasks.length], 'before');
 	});
@@ -3919,76 +3947,6 @@ function renderTrackerHeatmap(el: HTMLElement, data: import('./types').TrackerDa
 
 // ---- Table section (sectionType 'table') ------------------------------------
 
-interface TableSectionCell {
-	text: string;
-	cs: number;
-	rs: number;
-	col: number;
-	ext?: number;
-}
-
-function parseTableSectionRows(source: string): string[][] {
-	const rows: string[][] = [];
-	for (const raw of source.split('\n')) {
-		const line = raw.trim();
-		if (!line.startsWith('|')) continue;
-		const inner = line.replace(/^\|/, '').replace(/\|$/, '');
-		const cells = inner.split('|').map(c => c.trim());
-		if (cells.length > 0 && cells.every(c => /^:?-+:?$/.test(c))) continue;
-		rows.push(cells);
-	}
-	return rows;
-}
-
-function buildMergedTableGrid(rows: string[][]): TableSectionCell[][] {
-	const occ: boolean[][] = [];
-	const isOcc = (r: number, c: number): boolean => !!occ[r] && !!occ[r][c];
-	const setOcc = (r: number, c: number): void => {
-		if (!occ[r]) occ[r] = [];
-		occ[r][c] = true;
-	};
-	const grid: TableSectionCell[][] = [];
-	rows.forEach((cells, r) => {
-		const out: TableSectionCell[] = [];
-		let c = 0;
-		for (const text of cells) {
-			while (isOcc(r, c)) c++;
-			if (text === '>') {
-				const prev = out.length > 0 ? out[out.length - 1] : undefined;
-				if (prev) {
-					prev.cs++;
-					setOcc(r, c);
-				}
-				c++;
-				continue;
-			}
-			if (text === '^') {
-				let above: TableSectionCell | undefined;
-				for (let rr = r - 1; rr >= 0 && !above; rr--) {
-					above = (grid[rr] ?? []).find(cl => cl.col <= c && c < cl.col + cl.cs);
-				}
-				if (above) {
-					if (above.ext !== r) {
-						above.rs++;
-						above.ext = r;
-					}
-					for (let k = 0; k < above.cs; k++) setOcc(r, c + k);
-					c += above.cs;
-				} else {
-					c++;
-				}
-				continue;
-			}
-			const cell: TableSectionCell = { text, cs: 1, rs: 1, col: c };
-			setOcc(r, c);
-			out.push(cell);
-			c++;
-		}
-		grid.push(out);
-	});
-	return grid;
-}
-
 function tableSectionCellHtml(text: string): string {
 	const esc = text
 		.replace(/&/g, '&amp;')
@@ -3997,147 +3955,6 @@ function tableSectionCellHtml(text: string): string {
 	return esc
 		.replace(/&lt;br\s*\/?&gt;/gi, '<br>')
 		.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-}
-
-/** Inverse of buildMergedTableGrid: emit markdown rows with `>` / `^` markers so
- *  in-place cell edits round-trip back into the dashboard file. */
-function serializeMergedGrid(grid: TableSectionCell[][]): string {
-	let maxCols = 0;
-	for (const row of grid) for (const cell of row) maxCols = Math.max(maxCols, cell.col + cell.cs);
-	const lines: string[] = [];
-	grid.forEach((row, r) => {
-		const parts: string[] = [];
-		for (let c = 0; c < maxCols; c++) {
-			const start = row.find(cl => cl.col === c);
-			if (start) {
-				parts.push(start.text);
-				continue;
-			}
-			const left = row.find(cl => cl.col < c && c < cl.col + cl.cs);
-			if (left) {
-				parts.push('>');
-				continue;
-			}
-			let covered = false;
-			for (let rr = r - 1; rr >= 0 && !covered; rr--) {
-				const above = (grid[rr] ?? []).find(cl => cl.col <= c && c < cl.col + cl.cs);
-				if (above && above.rs > r - rr) {
-					parts.push('^');
-					covered = true;
-				}
-			}
-			if (!covered) parts.push('');
-		}
-		lines.push(`| ${parts.join(' | ')} |`);
-		if (r === 0) {
-			lines.push(`| ${new Array(maxCols).fill('---').join(' | ')} |`);
-		}
-	});
-	return lines.join('\n');
-}
-
-function gridToDenseRows(grid: TableSectionCell[][]): string[][] {
-	let maxCols = 0;
-	for (const row of grid) for (const cell of row) maxCols = Math.max(maxCols, cell.col + cell.cs);
-	const dense: string[][] = [];
-	for (let r = 0; r < grid.length; r++) {
-		const parts: string[] = [];
-		for (let c = 0; c < maxCols; c++) {
-			const start = (grid[r] ?? []).find((cl) => cl.col === c);
-			if (start) {
-				parts.push(start.text);
-				continue;
-			}
-			const left = (grid[r] ?? []).find((cl) => cl.col < c && c < cl.col + cl.cs);
-			if (left) {
-				parts.push('>');
-				continue;
-			}
-			let covered = false;
-			for (let rr = r - 1; rr >= 0 && !covered; rr--) {
-				const above = (grid[rr] ?? []).find((cl) => cl.col <= c && c < cl.col + cl.cs);
-				if (above && above.rs > r - rr) {
-					parts.push('^');
-					covered = true;
-				}
-			}
-			if (!covered) parts.push('');
-		}
-		dense.push(parts);
-	}
-	return dense;
-}
-
-function serializeDenseRows(dense: string[][]): string {
-	const lines: string[] = [];
-	dense.forEach((row, r) => {
-		lines.push(`| ${row.join(' | ')} |`);
-		if (r === 0) {
-			lines.push(`| ${new Array(row.length).fill('---').join(' | ')} |`);
-		}
-	});
-	return lines.join('\n');
-}
-
-function addTableRowAt(dense: string[][], r: number, grid: TableSectionCell[][]): string[][] {
-	const cols = dense[0]?.length ?? 0;
-	const newRow: string[] = [];
-	for (let c = 0; c < cols; c++) {
-		const cell = (grid[r] ?? []).find((cl) => cl.col <= c && c < cl.col + cl.cs);
-		newRow.push(cell && cell.rs > 1 ? '^' : '');
-	}
-	const next = [...dense];
-	next.splice(r + 1, 0, newRow);
-	return next;
-}
-
-function deleteTableRowAt(dense: string[][], r: number): string[][] {
-	if (r <= 1) return dense;
-	const next = [...dense];
-	const row = next[r];
-	if (!row) return dense;
-	const below = next[r + 1];
-	if (below) {
-		for (let c = 0; c < row.length; c++) {
-			if (row[c] !== '^' && below[c] === '^') {
-				below[c] = row[c] ?? '';
-			}
-		}
-	}
-	next.splice(r, 1);
-	return next;
-}
-
-function insertTableColumnAt(dense: string[][], c: number): string[][] {
-	const cols = dense[0]?.length ?? 0;
-	if (c < 0 || c > cols) return dense;
-	return dense.map((row) => {
-		let marker = '';
-		if (c === cols) {
-			const left = c > 0 ? row[c - 1] : undefined;
-			if (left === '>' || left === '^') marker = left;
-		} else {
-			const cur = row[c];
-			if (cur === '>' || cur === '^') marker = cur;
-		}
-		const next = [...row];
-		next.splice(c, 0, marker);
-		return next;
-	});
-}
-
-function deleteTableColumnAt(dense: string[][], c: number): string[][] {
-	const cols = dense[0]?.length ?? 0;
-	if (c < 0 || c >= cols) return dense;
-	return dense.map((row) => {
-		const removed = row[c];
-		const next = [...row];
-		next.splice(c, 1);
-		if (removed !== '>' && removed !== '^' && next[c] === '>') {
-			next[c] = removed ?? '';
-		}
-		return next;
-	});
 }
 
 interface TableTask {
@@ -4249,7 +4066,8 @@ function renderTaskCell(td: HTMLElement, cell: TableSectionCell, onChange: (valu
 	renderList();
 }
 
-function renderTableSection(el: HTMLElement, column: DashboardColumn, onEdit: (content: string) => void): void {
+export function renderTableSection(el: HTMLElement, column: DashboardColumn, callbacks: RenderCallbacks, app: App): void {
+	const onEdit = (content: string) => callbacks.onTableContentChange(column.name, content);
 	const wrap = el.createDiv({ cls: 'dashboard-table-wrap' });
 	const rows = parseTableSectionRows(column.tableContent ?? '');
 	if (rows.length === 0) {
@@ -4259,6 +4077,15 @@ function renderTableSection(el: HTMLElement, column: DashboardColumn, onEdit: (c
 	const grid = buildMergedTableGrid(rows);
 	const table = wrap.createEl('table', { cls: 'apex-table' });
 	const dense = gridToDenseRows(grid);
+	const placed = new Set(grid.flat().map(cell => tableCardId(cell.text)).filter(Boolean));
+	const unplaced = column.cards.filter(card => !placed.has(card.id));
+	const renderEmbedded = (host: HTMLElement, card: DashboardCard) => {
+		const cardEl = renderCard(card, column.name, 'todo', callbacks, app);
+		cardEl.addClass('apex-table-todo-card');
+		cardEl.querySelector('.dashboard-card-header')?.setAttribute('draggable', 'false');
+		cardEl.querySelector('.dashboard-card-resize-handle')?.remove();
+		host.appendChild(cardEl);
+	};
 	grid.forEach((cells, r) => {
 		const tr = table.createEl('tr');
 		for (const cell of cells) {
@@ -4266,7 +4093,20 @@ function renderTableSection(el: HTMLElement, column: DashboardColumn, onEdit: (c
 			if (cell.cs > 1) td.setAttribute('colspan', String(cell.cs));
 			if (cell.rs > 1) td.setAttribute('rowspan', String(cell.rs));
 			const isTaskCell = r > 1 && cell.col >= 2 && cell.cs === 1;
-			if (isTaskCell) {
+			const embeddedId = tableCardId(cell.text);
+			const embedded = column.cards.find(card => card.id === embeddedId);
+			if (embeddedId) {
+				td.addClass('apex-table-cell--tasks');
+				if (embedded) renderEmbedded(td, embedded);
+				else td.createDiv({ text: t('table.missingCard') });
+			} else if (isTaskCell && !cell.text.trim()) {
+				td.addClass('apex-table-cell--tasks');
+				const insert = td.createEl('button', { cls: 'apex-table-insert-todo', text: t('table.insertTodo') });
+				insert.addEventListener('click', e => {
+					e.stopPropagation();
+					callbacks.onTableTodoInsert?.(column.name, r, cell.col);
+				});
+			} else if (isTaskCell) {
 				renderTaskCell(td, cell, (value) => {
 					cell.text = value;
 					onEdit(serializeMergedGrid(grid));
@@ -4279,6 +4119,19 @@ function renderTableSection(el: HTMLElement, column: DashboardColumn, onEdit: (c
 				e.preventDefault();
 				e.stopPropagation();
 				const menu = new Menu();
+				if (!embeddedId) {
+					menu.addItem(item => item.setTitle(t('table.insertTodo')).setIcon('list-todo')
+						.onClick(() => callbacks.onTableTodoInsert?.(column.name, r, cell.col)));
+					for (const card of unplaced) {
+						menu.addItem(item => item.setTitle(t('table.placeTodo', { title: card.title })).setIcon('list-todo')
+							.onClick(() => {
+								if (cell.text.trim()) { new Notice(t('table.placeEmptyOnly')); return; }
+								cell.text = tableCardMarker(card.id);
+								onEdit(serializeMergedGrid(grid));
+							}));
+					}
+					menu.addSeparator();
+				}
 				menu.addItem((item) =>
 					item
 						.setTitle(t('table.addRowBelow'))
@@ -4372,6 +4225,11 @@ function renderTableSection(el: HTMLElement, column: DashboardColumn, onEdit: (c
 			});
 		}
 	});
+	if (unplaced.length) {
+		const retained = wrap.createDiv({ cls: 'apex-table-unplaced' });
+		retained.createDiv({ text: t('table.unplaced') });
+		for (const card of unplaced) renderEmbedded(retained, card);
+	}
 	wrap.createDiv({ cls: 'dashboard-table-hint', text: t('table.hint') });
 }
 // ---- Table edit modal (sectionType 'table') ---------------------------------

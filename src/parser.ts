@@ -310,7 +310,6 @@ export function serialize(data: DashboardData): string {
 		if (column.sectionType === 'table') {
 			if (column.tableContent) lines.push(...column.tableContent.split('\n'));
 			lines.push('');
-			continue;
 		}
 
 		if (column.sectionType === 'library' || column.sectionType === 'folder' || column.sectionType === 'images' || column.sectionType === 'videos' || column.sectionType === 'alltasks' || column.sectionType === 'calendar' || column.sectionType === 'dataview') continue;
@@ -399,6 +398,7 @@ export function serialize(data: DashboardData): string {
 					let taskLine = `${prefix}- [${task.checked ? 'x' : ' '}] ${task.text}`;
 					if (task.reminder) taskLine += ` ⏰ ${task.reminder}`;
 					if (task.collapsed) taskLine += ` <!--collapsed-->`;
+					if (task.dailyNote) taskLine += ` <!--apex-daily:${encodeURIComponent(task.dailyNote)}-->`;
 					lines.push(taskLine);
 					for (const child of task.children ?? []) writeTask(child, indent + 1);
 				};
@@ -933,14 +933,12 @@ function parseColumns(body: string, defs: Array<{ name: string; color: string; s
 			// stable across save/reload. Project/notes/etc. sections keep using `docs`.
 			// Sticky ("便利贴") sections mix memo and todo cards; only their memo-ish
 			// cards (generic/note) get the same folding — todo cards keep `docs` intact.
-			cards: resolvedType === 'table'
-				? []
-				: resolvedType === 'memo'
+			cards: resolvedType === 'memo'
 					? cards.map(foldDocsIntoBody)
 					: resolvedType === 'sticky'
 						? cards.map(c => (c.type === 'generic' || c.type === 'note') ? foldDocsIntoBody(c) : c)
 						: cards,
-			tableContent: resolvedType === 'table' ? section.content.trim() : undefined,
+			tableContent: resolvedType === 'table' ? section.content.split(/^### /m)[0]!.trim() : undefined,
 			libraryConfig: def?.libraryConfig,
 			wereadConfig: def?.wereadConfig,
 			ticktickConfig: def?.ticktickConfig,
@@ -1194,22 +1192,30 @@ function extractCardParts(body: string): {
 	const docLines: string[] = [];
 	const bodyLines: string[] = [];
 	let blockquote = '';
-	let currentParent: TaskItem | null = null;
+	const taskStack: Array<{ indent: number; task: TaskItem }> = [];
 
 	for (const line of lines) {
 		const trimmed = line.trim();
-		const isIndented = /^(\t| {4})/.test(line);
+		const taskIndent = (line.match(/^\s*/)?.[0] ?? '').replace(/\t/g, '    ').length;
 
 		const kvMatch = trimmed.match(/^(\w+):\s*(.+)$/);
 		if (kvMatch && kvMatch[1] && kvMatch[2] && KNOWN_METADATA_KEYS.has(kvMatch[1])) {
 			metadata[kvMatch[1]] = kvMatch[2];
-			currentParent = null;
+			taskStack.length = 0;
 			continue;
 		}
 
 		const taskMatch = trimmed.match(/^- \[([ xX])\]\s*(.+)$/);
 		if (taskMatch && taskMatch[1] && taskMatch[2]) {
 			let taskText = taskMatch[2];
+			let dailyNote: string | undefined;
+			const dailyMatch = taskText.match(/\s*<!--apex-daily:([^\s]+)-->$/);
+			if (dailyMatch) {
+				try {
+					dailyNote = decodeURIComponent(dailyMatch[1]!);
+					taskText = taskText.slice(0, dailyMatch.index);
+				} catch { /* Preserve malformed metadata as text. */ }
+			}
 			let taskReminder: string | undefined;
 			let taskCollapsed = false;
 			const collapsedMatch = taskText.match(COLLAPSED_REGEX);
@@ -1222,13 +1228,12 @@ function extractCardParts(body: string): {
 				taskText = taskText.replace(REMINDER_REGEX, '');
 				taskReminder = reminderMatch[1];
 			}
-			const node: TaskItem = { checked: taskMatch[1] !== ' ', text: taskText, reminder: taskReminder, collapsed: taskCollapsed };
-			if (isIndented && currentParent) {
-				currentParent.children = [...(currentParent.children ?? []), node];
-			} else {
-				tasks.push(node);
-				currentParent = node;
-			}
+			const node: TaskItem = { checked: taskMatch[1] !== ' ', text: taskText, reminder: taskReminder, collapsed: taskCollapsed, ...(dailyNote ? { dailyNote } : {}) };
+			while (taskStack.length && taskStack[taskStack.length - 1]!.indent >= taskIndent) taskStack.pop();
+			const parent = taskStack[taskStack.length - 1]?.task;
+			if (parent) parent.children = [...(parent.children ?? []), node];
+			else tasks.push(node);
+			taskStack.push({ indent: taskIndent, task: node });
 			continue;
 		}
 
@@ -1238,7 +1243,7 @@ function extractCardParts(body: string): {
 			continue;
 		}
 
-		currentParent = null;
+		taskStack.length = 0;
 
 		if (trimmed.startsWith('> ')) {
 			blockquote += (blockquote ? '\n' : '') + trimmed.slice(2);

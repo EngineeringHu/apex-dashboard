@@ -1,7 +1,9 @@
-import { App, TFile } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
 import type { DashboardSettings, DashboardCard, DashboardData, TaskItem, DocNode, QuickAction, BannerData, CardType } from './types';
 import { parse, serialize, generateDefaultMarkdown } from './parser';
 import { t } from './i18n';
+import { insertTableTodo } from './table-model';
+import { getTaskByPath } from './task-tree';
 import {
 	type TaskPath,
 	updateTaskAt,
@@ -260,6 +262,13 @@ export class SyncEngine {
 	): Promise<void> {
 		if (!this.data) return;
 
+		const sourceColumn = this.data.columns.find(col => col.cards.some(card => card.id === srcCardId));
+		const destColumn = this.data.columns.find(col => col.cards.some(card => card.id === destCardId));
+		const destCard = destColumn?.cards.find(card => card.id === destCardId);
+		if (srcCardId === destCardId || !sourceColumn || !destCard) return;
+		if ((sourceColumn.sectionType === 'table' || destColumn!.sectionType === 'table') && sourceColumn !== destColumn) return;
+		if (mode === 'nest' ? !getTaskByPath(destCard.tasks, destPath)
+			: destPath.length === 0 || (destPath.length > 1 && !getTaskByPath(destCard.tasks, destPath.slice(0, -1)))) return;
 		let movedTask: TaskItem | undefined;
 
 		const columnsWithout = this.data.columns.map(col => ({
@@ -398,6 +407,7 @@ export class SyncEngine {
 			columns: this.data.columns.map(col => ({
 				...col,
 				cards: col.cards.filter(c => c.id !== cardId),
+				...(col.tableContent ? { tableContent: col.tableContent.replace(/<!--\s*apex-todo:([a-zA-Z0-9_-]+)\s*-->/g, (marker, id: string) => id === cardId ? '' : marker) } : {}),
 			})),
 		};
 		await this.writeToDisk();
@@ -515,6 +525,24 @@ export class SyncEngine {
 				col.name === columnName ? { ...col, dataviewConfig: config } : col
 			),
 		};
+		await this.writeToDisk();
+	}
+
+	async insertTableTodo(columnName: string, row: number, col: number): Promise<void> {
+		if (!this.data) return;
+		const id = 'card-table-' + globalThis.crypto.randomUUID();
+		this.data = { ...this.data, columns: this.data.columns.map(column =>
+			column.name === columnName && column.sectionType === 'table'
+				? insertTableTodo(column, row, col, id, t('table.todoTitle')) : column) };
+		await this.writeToDisk();
+	}
+
+	async setTaskDailyNote(cardId: string, path: TaskPath, dailyNote: string | undefined, expectedText: string): Promise<void> {
+		if (!this.data) return;
+		const card = this.data.columns.flatMap(column => column.cards).find(c => c.id === cardId);
+		const task = card && getTaskByPath(card.tasks, path);
+		if (!task || task.text !== expectedText) { new Notice(t('task.changed')); return; }
+		this.data = this.mapCardTasks(this.data, cardId, tasks => updateTaskAt(tasks, path, task => ({ ...task, dailyNote })));
 		await this.writeToDisk();
 	}
 

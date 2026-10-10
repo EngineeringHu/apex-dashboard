@@ -1041,7 +1041,15 @@ export class DashboardView extends ItemView implements HoverParent {
 	}
 
 	private createCallbacks(): import('./types').RenderCallbacks {
+		const callbackData = this.sync.getData();
 		const callbacks: import('./types').RenderCallbacks = {
+			onTableTodoInsert: (name, row, col) => { void this.sync.insertTableTodo(name, row, col); },
+			onTaskDailyNoteChange: (id, path, note, expectedText) => {
+				const originalCard = callbackData?.columns.flatMap(column => column.cards).find(card => card.id === id);
+				const currentCard = this.sync.getData()?.columns.flatMap(column => column.cards).find(card => card.id === id);
+				if (!originalCard || originalCard !== currentCard) { new Notice(t('task.changed')); return; }
+				void this.sync.setTaskDailyNote(id, path, note, expectedText);
+			},
 			onCardEdit: (card: DashboardCard) => this.openCardEditModal(card),
 			onOpenNoteInPopover: (file: TFile, subpath?: string) => this.openNote(file, subpath),
 			onCardDelete: async (cardId: string) => {
