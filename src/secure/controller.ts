@@ -11,6 +11,8 @@ import { askPassword, askText } from './dialogs';
 import { recordDiagnostic } from './diagnostics';
 import { WeeklyCredentials } from './credentials';
 import { WeeklyEncryptionMode } from './mode';
+import { DailyEncryptionMode } from './daily-mode';
+import { DailyLockedView, DAILY_LOCKED_VIEW } from './daily-locked-view';
 import { WorkspaceTemplates, type TemplateSnapshot } from './templates';
 
 export class SecureController {
@@ -19,18 +21,20 @@ export class SecureController {
   readonly session:PlaintextSession;
   readonly credentials:WeeklyCredentials;
   readonly mode:WeeklyEncryptionMode;
+  readonly dailyMode:DailyEncryptionMode;
   readonly templates:WorkspaceTemplates;
   private statusEl:HTMLElement;
   private lastActivity=Date.now();
   private lockQueue=Promise.resolve();
   constructor(readonly plugin:DashboardPlugin){
     this.crypto=new CryptoWorker(plugin.app,plugin.manifest.dir!);this.store=new ProtectedStore(plugin.app,this.crypto);
-    this.session=new PlaintextSession(this);this.credentials=new WeeklyCredentials(this);this.mode=new WeeklyEncryptionMode(this);this.templates=new WorkspaceTemplates(this);this.statusEl=plugin.addStatusBarItem();this.status('周记保护：就绪');
+    this.session=new PlaintextSession(this);this.credentials=new WeeklyCredentials(this);this.mode=new WeeklyEncryptionMode(this);this.dailyMode=new DailyEncryptionMode(this);this.templates=new WorkspaceTemplates(this);this.statusEl=plugin.addStatusBarItem();this.status('周记保护：就绪');
     this.statusEl.onclick=()=>void(this.session.active?this.session.finish():this.pick()).catch(report);
   }
   register():void{
     const p=this.plugin;
     p.registerView(SECURE_VIEW,leaf=>new ProtectedView(leaf,this));p.registerExtensions(['apexenc'],SECURE_VIEW);
+    p.registerView(DAILY_LOCKED_VIEW,leaf=>new DailyLockedView(leaf));p.registerExtensions(['apexdaily'],DAILY_LOCKED_VIEW);
     const command=(id:string,name:string,run:()=>Promise<unknown>)=>p.addCommand({id:'protected-'+id,name:'周记加密：'+name,callback:()=>void run().catch(report)});
     command('open','打开周记（跟随加密开关）',()=>this.pick());
     command('new','新建周记（跟随加密开关）',()=>this.create());
@@ -41,14 +45,16 @@ export class SecureController {
     command('lock-template','锁定加密看板模板',async()=>{this.templates.clear();new Notice('加密模板已锁定，下次新建时需要重新解锁');});
     command('lock-all','锁定已展开的周记分区',()=>this.lockAll());
     command('resume-mode','继续未完成的加密开关切换',()=>this.mode.resume());
+    p.addCommand({id:'daily-encrypt-existing',name:'日记加密：加密现有明文日记',callback:()=>void this.dailyMode.setEnabled(true).catch(report)});
+    p.addCommand({id:'daily-resume-mode',name:'日记加密：继续未完成的切换',callback:()=>void this.dailyMode.resume().catch(report)});
     p.addRibbonIcon('lock-keyhole','加密周记',()=>void this.pick().catch(report));
     p.registerDomEvent(document,'keydown',()=>this.lastActivity=Date.now());
     p.registerDomEvent(document,'pointerdown',()=>this.lastActivity=Date.now());
     p.registerEvent(p.app.vault.on('modify',file=>{if(file instanceof TFile)this.session.changed(file);}));
     p.registerDomEvent(document,'visibilitychange',()=>{if(document.hidden)void this.lockEverything().catch(report);});
     p.registerInterval(window.setInterval(()=>{if(Date.now()-this.lastActivity>5*60*1000)void this.lockEverything().catch(report);},15000));
-    p.app.workspace.onLayoutReady(()=>void(async()=>{await this.session.recover();if(this.session.active)command('recover-legacy','完成旧版遗留数据恢复',()=>this.session.finish());await this.credentials.recover();this.mode.announce();})().catch(report));
-    p.register(()=>{this.session.unload();this.mode.unload();this.crypto.stop();});
+    p.app.workspace.onLayoutReady(()=>void(async()=>{await this.session.recover();if(this.session.active)command('recover-legacy','完成旧版遗留数据恢复',()=>this.session.finish());await this.credentials.recover();this.mode.announce();this.dailyMode.announce();})().catch(report));
+    p.register(()=>{this.session.unload();this.mode.unload();this.dailyMode.unload();this.crypto.stop();});
   }
   status(message:string):void{this.statusEl.setText(message);}
   files():TFile[]{return this.plugin.app.vault.getFiles().filter(f=>f.extension==='apexenc'&&f.parent?.path===PROTECTED_ROOT);}
@@ -71,9 +77,9 @@ export class SecureController {
   private serial(run:()=>Promise<void>):Promise<void>{const result=this.lockQueue.catch(()=>{}).then(run);this.lockQueue=result;return result;}
   lockFile(path:string):Promise<void>{return this.serial(async()=>{for(const view of this.views(path))await view.lockLocal();});}
   lockBlock(path:string,blockId:string):Promise<void>{return this.serial(async()=>{for(const view of this.views(path))await view.lockSection(blockId);});}
-  lockAll():Promise<void>{return this.serial(async()=>{for(const view of this.views())await view.lockLocal();if(!this.session.active)this.crypto.stop();this.status(this.mode.enabled?'周记已锁定':'周记加密：关闭 · 普通 Markdown');});}
+  lockAll():Promise<void>{return this.serial(async()=>{for(const view of this.views())await view.lockLocal();if(!this.session.active&&!this.dailyMode.busy)this.crypto.stop();this.status(this.mode.enabled?'周记已锁定':'周记加密：关闭 · 普通 Markdown');});}
   async prepareSection(path:string):Promise<void>{if(this.views(path).some(v=>v.isWholeEditing()))await this.lockFile(path);}
-  private async lockEverything():Promise<void>{if(this.mode.busy||this.credentials.busy)return;if(this.session.active)await this.session.finish();else if(this.mode.enabled)await this.lockAll();}
+  private async lockEverything():Promise<void>{if(this.mode.busy||this.dailyMode.busy||this.credentials.busy)return;if(this.session.active)await this.session.finish();else if(this.mode.enabled)await this.lockAll();}
   async create(initialTitle?:string):Promise<void>{
     const now=new Date(),parts=weekStartMonthDay(now);
     const defaultTitle=t('workspace.defaultWeeklyName',{year:weekStartYear(now),...parts,n:this.plugin.folderWorkspaceFiles().length+this.workspaceFiles().length+1});

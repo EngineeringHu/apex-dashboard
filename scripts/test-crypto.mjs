@@ -43,6 +43,18 @@ try{
   const publicRoot=await c.resolveRoot(shortPassword,publicEnvelope);
   assert.equal((await c.openAll(publicEnvelope,publicRoot)).markdown,md);
   const second=await call('create-public',{markdown:'## Second\nDifferent root\n',title:'Second',recipient});
+  const dailyRaw='\uFEFF---\r\ntitle: Journal\r\n未结束的 frontmatter\r\n## 标题\r\n```\r\n';
+  const dailyMeta={kind:'daily',version:1,path:'日记/子目录/2026-10-10.md',mtime:1720000000000,ctime:1710000000000};
+  const dailyText=await call('create-daily-public',{markdown:dailyRaw,title:'2026-10-10',recipient,document:dailyMeta});
+  const dailyEnvelope=c.parseEnvelope(dailyText);
+  assert.equal(dailyEnvelope.blocks.length,1,'日记原文不分区');
+  assert(!dailyText.includes('Journal'));
+  const dailyOpened=await call('open-all',{text:dailyText,password:shortPassword});
+  assert.equal(dailyOpened.markdown,dailyRaw);
+  assert.deepEqual(dailyOpened.payloads[0].document,dailyMeta);
+  await call('drop',{token:dailyOpened.token});
+  await assert.rejects(()=>call('open-all',{text:dailyText,password:'wrong'}));
+  await assert.rejects(()=>call('create-daily-public',{markdown:dailyRaw,title:'bad',recipient,document:{...dailyMeta,version:2}}));
   const firstOpened=await call('open-all',{text:publicText,password:shortPassword});
   const secondOpened=await call('open-all',{text:second,domainToken:firstOpened.token});
   assert.equal(secondOpened.markdown,'## Second\nDifferent root\n','batch token reuses recipient private key, not another note root');

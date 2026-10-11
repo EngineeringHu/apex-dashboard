@@ -15,6 +15,7 @@ const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8')
 await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 const toolOut=path.join(out,'tools');await mkdir(path.join(toolOut,'git-hooks'),{recursive:true});
 await writeFile(path.join(toolOut,'decrypt-weekly.mjs'),(await readFile(path.join(root,'tools/decrypt-weekly.mjs'),'utf8')).replace("../src/secure/format.mjs","./apex-crypto.mjs"));
+await writeFile(path.join(toolOut,'decrypt-daily.mjs'),(await readFile(path.join(root,'tools/decrypt-daily.mjs'),'utf8')).replace("../src/secure/format.mjs","./apex-crypto.mjs"));
 for(const [source,dest] of [['src/secure/format.mjs','apex-crypto.mjs'],['tools/check-protected-git.mjs','check-protected-git.mjs'],['docs/encryption-format.md','encryption-format.md'],['tools/git-hooks/pre-commit','git-hooks/pre-commit']])await copyFile(path.join(root,source),path.join(toolOut,dest));
 await esbuild.build({absWorkingDir:root,entryPoints:['tools/encrypt-weekly.mjs'],bundle:true,platform:'node',format:'esm',target:'es2022',banner:{js:"import {createRequire as cliCreateRequire} from 'node:module'; const require = cliCreateRequire(import.meta.url);"},outfile:path.join(out,'tools/encrypt-weekly.mjs'),logLevel:'info'});
 for(const name of ['weekly-file-dialog.ps1','解密周记.bat','加密周记.bat','双击工具使用说明.md'])await copyFile(path.join(root,'tools',name),path.join(toolOut,name));

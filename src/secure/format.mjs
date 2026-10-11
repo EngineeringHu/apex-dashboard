@@ -102,12 +102,13 @@ export async function createNote(markdown,title,password,domain=newDomain(),defi
   const root=await deriveRoot(password,domain);
   return createWithRoot(markdown,title,root,domain,definitions,assetRefs);
 }
-export async function createWithRoot(markdown,title,root,domain,definitions=[],assetRefs=[],fileId=id(),access=null) {
+export async function createWithRoot(markdown,title,root,domain,definitions=[],assetRefs=[],fileId=id(),access=null,document=null) {
   const e={format:FORMAT,version:access?2:1,id:fileId,domain,blocks:[],manifest:null,...(access?{access}:{})};
-  const chunks=splitMarkdown(markdown);
+  const chunks=document?[{kind:'info',raw:markdown}]:splitMarkdown(markdown);
+  if(bytes(markdown).length>MAX_NOTE_BYTES)throw Error('文档超过 4 MiB，请先拆分');
   for(let i=0;i<chunks.length;i++) {
     const chunk=chunks[i], blockId=id(), rawKey=rand(32), key=await importAes(rawKey);
-    const payload={raw:chunk.raw, ...(i===0?{title}:{}), definition:definitions[i-1]??null, assets:assetRefs.filter(a=>chunk.raw.includes(a.link))};
+    const payload={raw:chunk.raw, ...(i===0?{title}:{}), ...(i===0&&document?{document}:{}), definition:definitions[i-1]??null, assets:assetRefs.filter(a=>chunk.raw.includes(a.link))};
     const keyBox=await seal(await purpose(root,e.id,'wrap/'+blockId),rawKey,aad(e,'key/'+blockId+'/'+chunk.kind));
     rawKey.fill(0);
     const data=await seal(key,bytes(JSON.stringify(payload)),aad(e,'data/'+blockId+'/'+chunk.kind));
@@ -203,6 +204,15 @@ export async function createPublic(markdown,title,recipient,definitions=[],asset
   const fileId=id(),{root,access}=await newAccess(recipient,fileId);
   const e=await createWithRoot(markdown,title,root,recipient.domain,definitions,assets,fileId,access);
   if((await openAll(e,root)).markdown!==markdown)throw Error('新建密文往返校验失败');
+  return e;
+}
+/** One authenticated raw block preserves diary Markdown without parsing headings or fences. */
+export async function createPublicDocument(markdown,title,recipient,document){
+  if(!document||document.kind!=='daily'||document.version!==1||typeof document.path!=='string'||!document.path.startsWith('日记/')||!document.path.endsWith('.md')||document.path.includes('\\')||document.path.includes(':')||document.path.split('/').some(p=>!p||p==='.'||p==='..'||p.startsWith('.'))||!Number.isFinite(document.mtime)||!Number.isFinite(document.ctime))throw Error('日记元数据无效');
+  const fileId=id(),{root,access}=await newAccess(recipient,fileId);
+  const e=await createWithRoot(markdown,title,root,recipient.domain,[],[],fileId,access,document);
+  const opened=await openAll(e,root);
+  if(opened.markdown!==markdown||JSON.stringify(opened.payloads[0].document)!==JSON.stringify(document))throw Error('日记密文往返校验失败');
   return e;
 }
 export async function migrateRecipient(e,password,recipient,newPassword){

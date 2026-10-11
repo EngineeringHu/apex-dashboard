@@ -19,13 +19,14 @@ export class WeeklyCredentials {
   private get adapter(){return this.app.vault.adapter;}
   private async readConfig():Promise<string|null>{return await this.adapter.exists(KEYRING)?this.adapter.read(KEYRING):null;}
   async configured():Promise<boolean>{return (await this.readConfig())!==null;}
-  async assertReady():Promise<void>{await this.controller.mode?.assertReady();if(this.busy||await this.adapter.exists(JOURNAL)||this.busy)throw Error('统一密码正在更新或有待恢复操作，请先执行“恢复统一密码更新”');}
+  async assertReady():Promise<void>{await this.controller.mode?.assertReady();if(this.controller.dailyMode?.busy||this.controller.dailyMode?.pending)throw Error('日记加密切换尚未完成，请先在设置中继续切换');if(this.busy||await this.adapter.exists(JOURNAL)||this.busy)throw Error('统一密码正在更新或有待恢复操作，请先执行“恢复统一密码更新”');}
   async get():Promise<any|null>{
     const text=await this.readConfig();if(text===null)return null;
     const recipient=JSON.parse(text);await this.controller.crypto.call('recipient-validate',{recipient});return recipient;
   }
   async setup():Promise<void>{
     await this.assertReady();if(this.busy||this.creating)throw Error('周记操作进行中，请稍后设置密码');if(this.controller.session.active)throw Error('请先结束临时明文模式');
+    if(this.controller.dailyMode.busy||this.controller.dailyMode.pending||this.controller.dailyMode.encryptedFiles().length)throw Error('请先解密日记，再设置或更改统一密码');
     this.busy=true;const c=this.controller;let committed=false;
     try{
       const previous=await this.readConfig(),existing=c.files();

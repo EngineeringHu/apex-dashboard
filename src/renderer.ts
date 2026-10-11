@@ -2,6 +2,7 @@ import { attachTableLayout, disposeTableLayouts } from './table-layout-ui';
 import { reconcileTableLayout, tableColumnDefaults, tableHeaderRowCount, type TableStructureChange } from './table-layout';
 import { type TableSectionCell, parseTableSectionRows, buildMergedTableGrid, serializeMergedGrid, gridToDenseRows, serializeDenseRows, addTableRowAt, deleteTableRowAt, insertTableColumnAt, deleteTableColumnAt, tableCardId, tableCardMarker } from './table-model';
 import { DailyNoteLinkModal } from './task-daily-note-modal';
+import { assertDailyAccessible } from './secure/daily-access';
 import { App, Menu, Modal, Notice, Platform, TFile, setIcon } from 'obsidian';
 import type { HoverParent, EventRef } from 'obsidian';
 import type { DashboardData, DashboardColumn, DashboardCard, RenderCallbacks, TaskItem, DocNode, DashboardSettings, CardSize, TrackerStyle } from './types';
@@ -200,6 +201,8 @@ export function teardownBasenameIndex(app: App): void {
  * doc list and inline wikilinks resolve links identically.
  */
 function resolveNoteFile(app: App, rawPath: string): TFile | null {
+	const dailyPath = rawPath.startsWith('日记/') ? (rawPath.endsWith('.md') ? rawPath : `${rawPath}.md`) : null;
+	if (dailyPath) try { assertDailyAccessible(app, dailyPath); } catch { return null; }
 	const direct = app.vault.getFileByPath(rawPath);
 	if (direct) return direct;
 	const withMd = rawPath.includes('.') ? rawPath : `${rawPath}.md`;
@@ -2821,6 +2824,8 @@ function renderTaskItem(
 			setIcon(openBtn, 'book-open');
 			openBtn.addEventListener('click', e => {
 				e.stopPropagation();
+				try { assertDailyAccessible(app, task.dailyNote!); }
+				catch (error) { new Notice((error as Error).message, 10000); return; }
 				const file = app.vault.getAbstractFileByPath(task.dailyNote!);
 				if (!(file instanceof TFile)) { new Notice(t('task.dailyMissing')); return; }
 				void app.workspace.getLeaf(false).openFile(file);
@@ -3191,7 +3196,7 @@ function renderMemoViewContent(container: HTMLElement, text: string, app: App): 
 
 			docItem.addEventListener('click', (e) => {
 				if ((e.target as HTMLElement).tagName === 'BUTTON') return;
-				if (!resolved) return;
+				if (!resolved) { try { assertDailyAccessible(app, doc.path.endsWith('.md') ? doc.path : `${doc.path}.md`); } catch (error) { new Notice((error as Error).message, 10000); } return; }
 				activeNoteOpener?.(resolved);
 			});
 
@@ -3394,7 +3399,7 @@ function renderWikilink(container: HTMLElement, content: string, app: App): void
 
 	link.addEventListener('click', (e) => {
 		e.stopPropagation();
-		if (!file) return;
+		if (!file) { try { assertDailyAccessible(app, path.endsWith('.md') ? path : `${path}.md`); } catch (error) { new Notice((error as Error).message, 10000); } return; }
 		activeNoteOpener?.(file, fragment ? `#${fragment}` : undefined);
 	});
 }

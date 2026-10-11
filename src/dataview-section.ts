@@ -8,6 +8,7 @@ import { getLanguage, t } from './i18n';
 import { attachNoteHover } from './hover-preview';
 import { toggleTaskInFile } from './alltasks-scan';
 import { buildPages, invalidatePath } from './dql/page-builder';
+import { DAILY_EXTENSION, DAILY_ROOT } from './secure/daily-access';
 import { executeDql } from './dql';
 import { coerceNumber, dqlCompare, formatDate, formatValue, kindOf } from './dql/values';
 import { normalizeExcludeFolders, isUnderExcludedFolder } from './exclude-folders';
@@ -95,9 +96,11 @@ export function renderDataviewSection(
 			}
 			if (outcome.empty) {
 				renderEmptyState(content, 'dataview.emptyQuery', true);
+				showEncryptedDiaryHint(content, app);
 				return;
 			}
 			renderResult(content, outcome.result, app, () => { void render(); }, config, onConfigChange);
+			showEncryptedDiaryHint(content, app);
 		} catch (err) {
 			if(run!==generation)return;
 			const message = err instanceof Error ? err.message : String(err);
@@ -112,6 +115,11 @@ export function renderDataviewSection(
 	} else if (!hasRun) {
 		void render();
 	}
+}
+
+function showEncryptedDiaryHint(content: HTMLElement, app: App): void {
+	const count = (app.vault.getFiles?.() ?? []).filter(file => file.path.startsWith(`${DAILY_ROOT}/`) && file.path.endsWith(DAILY_EXTENSION)).length;
+	if (count) content.createDiv({ cls: 'dashboard-dataview-empty-hint', text: `${count} 篇加密日记未计入查询；如需完整结果，请先关闭日记加密并完成解密。` });
 }
 
 /* ----------------------------- states ----------------------------- */

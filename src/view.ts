@@ -23,6 +23,7 @@ import { renderQuickActions, AddActionModal, DocSearchModal } from './quick-acti
 import { setupDragAndDrop } from './dnd';
 import { CardEditModal } from './card-edit-modal';
 import { NotePopoverModal, revealMarkdownLine } from './note-popover-modal';
+import { assertDailyAccessible } from './secure/daily-access';
 import { showConfirmDialog } from './confirm-dialog';
 import { showPromptDialog } from './prompt-dialog';
 import { clearWeatherCache } from './weather-service';
@@ -1318,6 +1319,7 @@ export class DashboardView extends ItemView implements HoverParent {
 			const dateStr = nowMoment().format(format);
 			const fileName = `${dateStr}.md`;
 			const path = folder ? `${folder}/${fileName}` : fileName;
+			assertDailyAccessible(this.app, path);
 
 			const title = card.title?.trim() || t('notice.memoUntitled');
 			const block = `### ${title}\n${serializeTasksForNote(card.tasks)}`;
@@ -1334,7 +1336,7 @@ export class DashboardView extends ItemView implements HoverParent {
 			new Notice(t('notice.tasksSavedToDaily', { path }), 4000);
 		} catch (err) {
 			console.error('[Dashboard] saveTasksToDaily failed:', err);
-			new Notice(t('notice.dailySaveError'), 4000);
+			new Notice(err instanceof Error && /日记.*(加密|冲突|切换)/.test(err.message) ? err.message : t('notice.dailySaveError'), 10000);
 		}
 	}
 
@@ -1433,6 +1435,8 @@ export class DashboardView extends ItemView implements HoverParent {
 	 *  always opened in a real tab — the in-dashboard popover only hosts a
 	 *  MarkdownView and would render them broken. */
 	private openNote(file: TFile, subpath?: string, line?: number): void {
+		try { assertDailyAccessible(this.app, file.path); }
+		catch (error) { new Notice((error as Error).message, 10000); return; }
 		if (this.plugin.settings.disableNotePopover || file.extension !== 'md') {
 			void this.openNoteInTab(file, subpath, line);
 			return;
@@ -1837,6 +1841,8 @@ export class DashboardView extends ItemView implements HoverParent {
 	}
 
 	private async navigateToPath(path: string): Promise<void> {
+		try { assertDailyAccessible(this.app, path.endsWith('.md') ? path : `${path}.md`); }
+		catch (error) { new Notice((error as Error).message, 10000); return; }
 		let file = this.app.vault.getFileByPath(path);
 		if (!file && !path.endsWith('.md')) {
 			file = this.app.vault.getFileByPath(`${path}.md`);

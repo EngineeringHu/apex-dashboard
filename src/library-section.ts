@@ -9,6 +9,7 @@ import { KANBAN_FILE_DRAG_TYPE } from './dnd';
 import { resolveCoverAsObjectUrl } from './book-service';
 import { applyModalTheme } from './modal-theme';
 import { GALLERY_COVER_PLACEHOLDER_DATA_URL } from './assets/gallery-cover-placeholder';
+import { assertDailyAccessible, DAILY_EXTENSION, DAILY_ROOT } from './secure/daily-access';
 
 // Set once per render by renderLibrarySection so the grid/list/table/kanban
 // renderers can route opens through the note popover and attach hover previews
@@ -868,6 +869,9 @@ export function renderLibrarySection(
 				renderKanbanView(contentArea, pageResults, app, currentConfig);
 				break;
 		}
+		const encryptedCount = (app.vault.getFiles?.() ?? []).filter(file => file.path.startsWith(`${DAILY_ROOT}/`) && file.path.endsWith(DAILY_EXTENSION)
+			&& (!(currentConfig.folders?.length) || currentConfig.folders.some(folder => file.path.startsWith(folder.replace(/^\/+|\/+$/g, '') + '/')))).length;
+		if (encryptedCount) contentArea.createDiv({ cls: 'dashboard-dataview-empty-hint', text: `${encryptedCount} 篇加密日记未计入筛选；需要完整结果时请先解密。` });
 
 		// Render pagination controls (kanban scrolls horizontally, no pagination)
 		if (!isKanban && totalPages > 1) {
@@ -977,6 +981,8 @@ export function renderPagination(
 }
 
 function openFile(app: App, file: TFile): void {
+	try { assertDailyAccessible(app, file.path); }
+	catch (error) { new Notice((error as Error).message, 10000); return; }
 	if (!Platform.isMobile && libOpener) {
 		libOpener(file);
 	} else {

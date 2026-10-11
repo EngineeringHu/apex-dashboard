@@ -1,5 +1,6 @@
 import { App, TFile } from 'obsidian';
 import { MomentLike, momentOf, nowMoment } from './datetime';
+import { assertDailyAccessible } from './secure/daily-access';
 
 interface DailyNotesOptions {
 	folder?: string;
@@ -120,6 +121,7 @@ export async function appendTaskToDailyNote(app: App, iso: string, taskLine: str
 	if (!opts) return null;
 	const path = dailyNotePathFor(app, iso);
 	if (!path) return null;
+	assertDailyAccessible(app, path);
 
 	const folder = (opts.folder || '').trim().replace(/^\/+|\/+$/g, '');
 	if (folder) await ensureFolder(app, folder);
@@ -230,6 +232,7 @@ export async function insertTaskForDay(
 	for (const dayIso of iso === todayIso ? [iso] : [iso, todayIso]) {
 		const notePath = dailyNotePathFor(app, dayIso);
 		if (!notePath) break; // Daily Notes plugin disabled — no note possible.
+		assertDailyAccessible(app, notePath);
 		const note = app.vault.getAbstractFileByPath(notePath);
 		if (note instanceof TFile) {
 			return await insertIntoNote(app, note, await app.vault.read(note), taskLine, position);
@@ -294,6 +297,7 @@ export async function getOrCreateDailyNote(app: App, iso: string): Promise<TFile
 	if (!opts) return null;
 	const path = dailyNotePathFor(app, iso);
 	if (!path) return null;
+	assertDailyAccessible(app, path);
 
 	const folder = (opts.folder || '').trim().replace(/^\/+|\/+$/g, '');
 	if (folder) await ensureFolder(app, folder);

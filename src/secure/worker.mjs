@@ -8,6 +8,7 @@ export function receive(request,send){chain=chain.then(async()=>{
 async function run(op,a) {
   if(op==='create') return crypto.stringify(await crypto.createNote(a.markdown,a.title,a.password,a.domain,a.definitions,a.assets));
   if(op==='create-public') return crypto.stringify(await crypto.createPublic(a.markdown,a.title,a.recipient,a.definitions,a.assets));
+  if(op==='create-daily-public') return crypto.stringify(await crypto.createPublicDocument(a.markdown,a.title,a.recipient,a.document));
   if(op==='recipient-create') return crypto.createRecipient(a.password);
   if(op==='recipient-check'){await crypto.unlockRecipient(a.password,a.recipient);return true;}
   if(op==='recipient-validate'){crypto.checkRecipient(a.recipient);return true;}

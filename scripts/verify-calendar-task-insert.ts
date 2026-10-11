@@ -122,6 +122,27 @@ async function main(): Promise<void> {
 		assert.ok(store.get(futurePath)!.includes(line), '8: line in created note');
 	}
 
+	// Encrypted clicked/today notes must stop before falling back to another file.
+	{
+		const { app, store } = makeApp({ [`日记/${futureIso}.apexdaily`]: 'cipher', [todayPath]: 'Today\n', 'Dashboard/dashboard.md': '- [ ] Existing\n' }, { folder: '日记' });
+		await assert.rejects(() => insertTaskForDay(app, futureIso, '- [ ] blocked', 'Dashboard/dashboard'), /已加密/);
+		assert.equal(store.get('Dashboard/dashboard.md'), '- [ ] Existing\n');
+		assert.equal(store.get(todayPath), 'Today\n');
+	}
+	{
+		const path = `日记/${futureIso}.md`;
+		const { app, store } = makeApp({ [path]: 'New plain\n', [`日记/${futureIso}.apexdaily`]: 'cipher' }, { folder: '日记' });
+		await assert.rejects(() => insertTaskForDay(app, futureIso, '- [ ] blocked'), /同名冲突/);
+		assert.equal(store.get(path), 'New plain\n');
+	}
+	{
+		const path = `日记/${futureIso}.md`;
+		const { app, store } = makeApp({ [path]: 'New plain\n' }, { folder: '日记' });
+		const target = await insertTaskForDay(app, futureIso, '- [ ] allowed');
+		assert.equal(target?.file.path, path);
+		assert.ok(store.get(path)?.includes('allowed'));
+	}
+
 	// Sanity: returned targets always describe the written line.
 	{
 		const { app } = makeApp({ [todayPath]: 'x\n' });
@@ -131,7 +152,7 @@ async function main(): Promise<void> {
 		assert.equal(target.writtenLine, '- [ ] y', 'sanity: writtenLine');
 	}
 
-	console.log('verify-calendar-task-insert: 8 scenarios + sanity OK');
+	console.log('verify-calendar-task-insert: 11 scenarios + sanity OK');
 }
 
 void main();

@@ -209,13 +209,12 @@ export function openPinnedNote(app: App, note: PinnedNote): void {
  *  stale blank note (e.g. from earlier, before the template was wired up) is
  *  auto-seeded with the template. Shows a hint when the core plugin is disabled. */
 export async function openTodayNote(app: App): Promise<void> {
-	const iso = nowMoment().format('YYYY-MM-DD');
-	const file = await getOrCreateDailyNote(app, iso);
-	if (!file) {
-		new Notice(t('quickNote.dailyDisabled'));
-		return;
-	}
-	await app.workspace.getLeaf('tab').openFile(file);
+	try {
+		const iso = nowMoment().format('YYYY-MM-DD');
+		const file = await getOrCreateDailyNote(app, iso);
+		if (!file) { new Notice(t('quickNote.dailyDisabled')); return; }
+		await app.workspace.getLeaf('tab').openFile(file);
+	} catch (error) { new Notice(error instanceof Error ? error.message : t('notice.dailySaveError'), 10000); }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

@@ -94,6 +94,7 @@ export default class DashboardPlugin extends Plugin {
 			this.tableLayouts = new TableLayoutStore(() => this.settings.tableLayouts!, () => this.saveSettings());
 			this.secure = new SecureController(this);
 			await this.secure.mode.load();
+			await this.secure.dailyMode.load();
 			this.secure.register();
 
 			this.registerView(DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this));

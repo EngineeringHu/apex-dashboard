@@ -15,6 +15,15 @@ type NoteViewMode = 'source' | 'preview';
  * last choice is remembered.
  */
 export class NotePopoverModal extends Modal {
+	private static openModals = new Set<NotePopoverModal>();
+	private closing: Promise<void> | null = null;
+	static async closeFiles(paths: Set<string>): Promise<void> {
+		await Promise.all([...this.openModals].filter(modal => paths.has(modal.file.path)).map(async modal => {
+			if (modal.leaf?.view instanceof MarkdownView) await modal.leaf.view.save();
+			modal.close();
+			await modal.closing;
+		}));
+	}
 	private readonly file: TFile;
 	private readonly subpath?: string;
 	private readonly line?: number;
@@ -31,6 +40,7 @@ export class NotePopoverModal extends Modal {
 	}
 
 	async onOpen(): Promise<void> {
+		NotePopoverModal.openModals.add(this);
 		const { contentEl, modalEl } = this;
 		modalEl.addClass('note-popover-modal-wrap');
 		applyModalTheme(modalEl);
@@ -117,11 +127,12 @@ export class NotePopoverModal extends Modal {
 	}
 
 	onClose(): void {
+		NotePopoverModal.openModals.delete(this);
 		const leaf = this.leaf;
 		this.leaf = null;
 		this.toggleBtn = null;
 		if (leaf) {
-			void this.detachLeaf(leaf);
+			this.closing = this.detachLeaf(leaf);
 		}
 		this.contentEl.empty();
 	}

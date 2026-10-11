@@ -3,6 +3,7 @@ import { getOrCreateDailyNote } from './daily-notes';
 import { nowMoment } from './datetime';
 import { PathPickerModal } from './path-picker-modal';
 import { t } from './i18n';
+import { assertDailyAccessible } from './secure/daily-access';
 
 /** Linking stores a path only; it does not export the task into an unencrypted note. */
 export class DailyNoteLinkModal extends Modal {
@@ -15,7 +16,10 @@ export class DailyNoteLinkModal extends Modal {
         const existing = el.createEl('button', { text: t('task.pickDaily') });
         existing.addEventListener('click', () => {
             this.close();
-            new PathPickerModal(this.app, 'file', path => this.onPick(path)).open();
+            new PathPickerModal(this.app, 'file', path => {
+                try { assertDailyAccessible(this.app, path); this.onPick(path); }
+                catch (error) { new Notice((error as Error).message, 10000); }
+            }).open();
         });
         const row = el.createDiv({ cls: 'apex-daily-link-date' });
         const date = row.createEl('input', { attr: { type: 'date', 'aria-label': t('task.dailyDate') } });
@@ -31,7 +35,7 @@ export class DailyNoteLinkModal extends Modal {
                 this.close();
             } catch (error) {
                 console.error('[Apex] link daily note', error);
-                new Notice(t('notice.dailySaveError'));
+                new Notice(error instanceof Error ? error.message : t('notice.dailySaveError'));
             } finally { byDate.disabled = false; }
         })(); });
         if (this.current) {

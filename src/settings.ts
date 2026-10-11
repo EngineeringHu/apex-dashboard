@@ -71,7 +71,7 @@ export class DashboardSettingTab extends PluginSettingTab {
 					{
 						name: t('settings.general'),
 						desc: t('settings.languageDesc'),
-						aliases: [t('settings.language'), t('settings.stylePreset'), t('settings.recentCount'), t('quickNote.title'), t('settings.workspaceList'), '周记加密', '周记统一密码', '周记明文文件名'],
+						aliases: [t('settings.language'), t('settings.stylePreset'), t('settings.recentCount'), t('quickNote.title'), t('settings.workspaceList'), '周记加密', '周记统一密码', '周记明文文件名', '日记加密', '补加密新日记'],
 						render: (setting) => {
 							asBlock(setting);
 							onPage('general')(setting);
@@ -256,6 +256,18 @@ export class DashboardSettingTab extends PluginSettingTab {
 	 *  (pre-1.13) and the declarative General section (1.13+). */
 	private renderGeneralSettings(containerEl: HTMLElement): void {
 		const mode=this.plugin.secure.mode;
+		const daily=this.plugin.secure.dailyMode;
+		const dailyCount=daily.counts();
+		new Setting(containerEl).setName('日记加密')
+			.setDesc(`手动转换日记目录中的现有 Markdown；已加密 ${dailyCount.encrypted} 篇，明文 ${dailyCount.plain} 篇。之后由 Calendar 等新建的日记仍是明文。`)
+			.addToggle(toggle=>toggle.setValue(daily.enabled).setDisabled(daily.busy||daily.pending).onChange(async value=>{
+				toggle.setDisabled(true);try{await daily.setEnabled(value);}catch(error){new Notice(error instanceof Error?error.message:'日记切换未完成',15000);}
+				finally{this.refresh();}
+			}));
+		if(daily.pending)new Setting(containerEl).setName('日记切换尚未完成').setDesc('原文件和已经写出的转换结果均已保留，请继续校验并完成切换。')
+			.addButton(button=>button.setButtonText('继续切换').onClick(async()=>{button.setDisabled(true);try{await daily.resume();}catch(error){new Notice((error as Error).message,15000);}finally{this.refresh();}}));
+		else if(daily.enabled&&dailyCount.plain)new Setting(containerEl).setName('补加密新日记').setDesc('仅处理当前已有的明文日记；不自动加密后续新建文件。')
+			.addButton(button=>button.setButtonText('加密现有明文日记').onClick(async()=>{button.setDisabled(true);try{await daily.setEnabled(true);}catch(error){new Notice((error as Error).message,15000);}finally{this.refresh();}}));
 		new Setting(containerEl).setName('周记加密')
 			.setDesc('统一切换周记目录中的全部周记。开启：分区展开需密码，收起锁定；关闭：转换为普通 .md，搜索、Dataview 和工作台正常使用，磁盘及 Git 中为明文。')
 			.addToggle(toggle=>toggle.setValue(mode.enabled).setDisabled(mode.busy||mode.pending).onChange(async value=>{

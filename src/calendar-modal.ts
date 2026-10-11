@@ -13,6 +13,12 @@ import {
 import { insertTaskForDay, type TaskInsertTarget } from './daily-notes';
 import { applyModalTheme } from './modal-theme';
 import type { DashboardSettings } from './types';
+import { DAILY_EXTENSION, DAILY_ROOT } from './secure/daily-access';
+
+function showEncryptedDailyHint(app: App, container: HTMLElement): void {
+	const count = (app.vault.getFiles?.() ?? []).filter(file => file.path.startsWith(`${DAILY_ROOT}/`) && file.path.endsWith(DAILY_EXTENSION)).length;
+	if (count) container.createDiv({ cls: 'dashboard-dataview-empty-hint', text: `${count} 篇加密日记中的任务未计入日历；请先解密以查看完整结果。` });
+}
 
 interface CalendarModalCallbacks {
 	onToggle: (task: VaultTask, nextChecked: boolean) => Promise<void> | void;
@@ -114,6 +120,7 @@ export class CalendarMonthModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		const container = contentEl.createDiv({ cls: 'dashboard-modal dashboard-calendar-fullscreen-inner' });
+		showEncryptedDailyHint(this.app, container);
 
 		const header = container.createDiv({ cls: 'dashboard-modal-header dashboard-calendar-nav' });
 		const prev = header.createDiv({ cls: 'dashboard-calendar-nav-btn' });
@@ -276,6 +283,7 @@ export class DayAgendaModal extends Modal {
 		});
 
 		const container = contentEl.createDiv({ cls: 'dashboard-modal dashboard-modal--compact' });
+		showEncryptedDailyHint(this.app, container);
 		const header = container.createDiv({ cls: 'dashboard-modal-header' });
 		header.createDiv({ cls: 'dashboard-modal-title', text: `${this.iso} · ${t('calendar.dayAgenda')}` });
 
@@ -378,7 +386,7 @@ export class DayAgendaModal extends Modal {
 			target = await insertTaskForDay(this.app, this.iso, line, this.dashboardFile, readTaskInsertPosition(this.app));
 		} catch (err) {
 			console.error('[Dashboard] add task failed:', err);
-			new Notice(t('calendar.taskAddFailed'), 4000);
+			new Notice(err instanceof Error && /日记.*(加密|冲突|切换)/.test(err.message) ? err.message : t('calendar.taskAddFailed'), 10000);
 			return;
 		}
 		if (!target) {
