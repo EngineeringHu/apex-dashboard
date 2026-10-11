@@ -1,4 +1,5 @@
 import { App, TFile } from 'obsidian';
+import { parseTableSectionRows } from './table-model';
 import { normalizeExcludeFolders, isUnderExcludedFolder } from './exclude-folders';
 
 /** Recognized task priority levels (parsed from `[priority:: ...]`). */
@@ -11,6 +12,11 @@ export type TaskGroupBy = 'date' | 'priority' | 'none';
  * display it, bucket it, and write the toggle back to its exact source line.
  */
 export interface VaultTask {
+	syncId?: string;
+	syncKey?: string;
+	dailyNote?: string;
+	section?: string;
+	card?: string;
 	file: TFile;
 	path: string;
 	/** 0-based line index of the checkbox in the source file. */
@@ -98,15 +104,34 @@ function hhmm(s: string | undefined): string | undefined {
  * Scan one markdown file's content for checkbox tasks. Returns an empty array
  * (never throws) so one bad file can't break the whole section.
  */
-export function scanFileTasks(file: TFile, content: string): VaultTask[] {
+export function scanFileTasks(file: TFile, content: string, includeTables=false): VaultTask[] {
 	const lines = content.split('\n');
 	const out: VaultTask[] = [];
+	let section='',card='',sectionIndex=0,fence='';
 	for (let i = 0; i < lines.length; i++) {
 		const raw = lines[i]!;
+        const marker=raw.trim().match(/^(`{3,}|~{3,})/);
+        if(marker){if(!fence)fence=marker[1]![0]!;else if(marker[1]![0]===fence)fence='';continue;}
+        if(fence)continue;
+        if(raw.startsWith('## ')){section=raw.slice(3).trim();sectionIndex++;card='';}
+        if(raw.startsWith('### '))card=raw.slice(4).trim();
 		const m = raw.match(TASK_LINE_REGEX);
-		if (!m) continue;
+        if(!m){
+         if(includeTables&&raw.trim().startsWith('|')){
+          const cells=parseTableSectionRows(raw)[0]??[];
+          const lines=cells.flatMap(cell=>cell.split(/<br\s*\/?>/i)).map(line=>line.trim()).filter(line=>/^(?:-\s*)?\[[ xX]\]\s+/.test(line)).map(line=>line.startsWith('-')?line:'- '+line);
+          for(const task of scanFileTasks(file,lines.join('\n')))out.push({...task,line:-1,originalLine:raw,section,card:'表格任务'});
+         }
+         continue;
+        }
 		const [, , mark, rest] = m;
 		let text = rest ?? '';
+        const sync=text.match(/\s*<!--apex-sync:([a-zA-Z0-9-]+):([a-zA-Z0-9-]+)-->\s*$/);
+        if(sync)text=text.slice(0,sync.index);
+        const daily=text.match(/\s*<!--apex-daily:([^\s]+)-->\s*$/);
+        let dailyNote:string|undefined;
+        if(daily){try{dailyNote=decodeURIComponent(daily[1]!);}catch{}text=text.slice(0,daily.index);}
+
 		text = text.replace(COLLAPSED_REGEX, '');
 
 		let reminder: string | undefined;
@@ -182,6 +207,8 @@ export function scanFileTasks(file: TFile, content: string): VaultTask[] {
 
 		out.push({
 			file,
+            syncId:sync?.[1], syncKey:sync ? file.path+'\\n'+sectionIndex+'\\n'+sync[1] : undefined,
+            dailyNote,section,card,
 			path: file.path,
 			line: i,
 			originalLine: raw,

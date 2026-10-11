@@ -179,6 +179,11 @@ export interface ResultRow {
 
 /** A flattened checkbox task attached to a TASK query row. */
 export interface DqlTask {
+	readonly syncId?: string;
+	readonly syncKey?: string;
+	readonly section?: string;
+	readonly card?: string;
+	readonly copies?: number;
 	readonly text: string;
 	readonly checked: boolean;
 	readonly path: string;

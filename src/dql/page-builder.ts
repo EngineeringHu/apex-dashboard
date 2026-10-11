@@ -5,6 +5,7 @@ import {
 } from './values';
 import { parseDate } from './functions';
 import { scanFileTasks } from '../alltasks-scan';
+import { isUnderExcludedFolder, normalizeExcludeFolders } from '../exclude-folders';
 
 /** Safe string coercion for `unknown` frontmatter values: scalars stringify
  *  directly; objects/arrays fall back to an empty string (never "[object Object]"). */
@@ -29,7 +30,7 @@ let outlinksCache: Readonly<Record<string, readonly string[]>> = {};
 /** Build the full page index for the current vault state. Cheap on repeat
  *  calls thanks to the mtime cache; yields to the UI thread every 50 files so
  *  large vaults don't freeze the app (mirrors alltasks-scan.ts:191). */
-export async function buildPages(app: App): Promise<Page[]> {
+export async function buildPages(app: App, options:{excludePaths?:string[];excludeFolders?:string[];canRead?:()=>boolean}={}): Promise<Page[]> {
 	const files = app.vault.getMarkdownFiles();
 	const stale = new Set(moduleCache.keys());
 	const pages: Page[] = [];
@@ -39,6 +40,8 @@ export async function buildPages(app: App): Promise<Page[]> {
 
 	for (let i = 0; i < files.length; i++) {
 		const file = files[i]!;
+		if(options.canRead&&!options.canRead())return [];
+		if(options.excludePaths?.includes(file.path)||isUnderExcludedFolder(file.path,normalizeExcludeFolders(options.excludeFolders??[])))continue;
 		if (i > 0 && i % 50 === 0) await new Promise<void>(r => window.setTimeout(r, 0));
 
 		if (file.path.startsWith('.')) { stale.delete(file.path); continue; }
@@ -180,7 +183,7 @@ function tagToLink(tag: string): DqlValue {
 
 function collectTasks(file: TFile, body: string): DqlValue[] {
 	if (!body) return [];
-	const scanned = scanFileTasks(file, body);
+	const scanned = scanFileTasks(file, body, true);
 	return scanned.map(t => {
 		// Each task is a queryable object: `completed`, `text`, `due`, plus the
 		// interactive payload the renderer needs to toggle it back to disk.
@@ -188,6 +191,7 @@ function collectTasks(file: TFile, body: string): DqlValue[] {
 			completed: t.checked,
 			checked: t.checked,
 			text: t.text,
+            syncId:t.syncId??null, syncKey:t.syncKey??null, dailyNote:t.dailyNote??null, section:t.section??null, card:t.card??null,
 			due: t.due ?? null,
 			created: makeDate(t.ctime),
 			priority: t.priority ?? null,

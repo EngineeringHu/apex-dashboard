@@ -52,6 +52,7 @@ function resolveDateToken(arg: DqlValue): DqlValue | undefined {
 	const midnight = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 	const iso = (d: Date): number => d.getTime();
 	switch (arg.toLowerCase()) {
+		case 'sow': { const start=new Date(now);start.setDate(start.getDate()-start.getDay());return makeDate(midnight(start)); }
 		case 'today': return makeDate(midnight(now));
 		case 'now': return makeDate(iso(now));
 		case 'tomorrow': { const t = new Date(now); t.setDate(t.getDate() + 1); return makeDate(midnight(t)); }
@@ -65,6 +66,14 @@ function resolveDateToken(arg: DqlValue): DqlValue | undefined {
 export function parseDate(input: string): number | null {
 	const s = input.trim();
 	if (!s) return null;
+ // Calendar dates have no timezone: use local midnight, like today/sow.
+ // Date.parse('YYYY-MM-DD') uses UTC and incorrectly excludes same-day rows in UTC+ zones.
+ const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+ if (day) {
+  const y=Number(day[1]),m=Number(day[2])-1,d=Number(day[3]);
+  const local=new Date(0);local.setFullYear(y,m,d);local.setHours(0,0,0,0);
+  return local.getFullYear()===y&&local.getMonth()===m&&local.getDate()===d?local.getTime():null;
+ }
 	// ISO 8601 (with optional time + timezone).
 	const iso = Date.parse(s);
 	if (!Number.isNaN(iso) && /\d{4}-\d{2}-\d{2}/.test(s)) return iso;

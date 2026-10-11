@@ -218,7 +218,7 @@ function evaluateCall(node: Extract<Expression, { type: 'call' }>, ctx: EvalCont
 /* ----------------------------- query runner ----------------------------- */
 
 /** Run a parsed query against the indexed pages. */
-export function runQuery(query: Query, pages: readonly Page[]): QueryResult {
+export function runQuery(query: Query, pages: readonly Page[], deduplicateLinkedTasks = false): QueryResult {
 	// 1. FROM: source resolution narrows the candidate pages.
 	let rows = applyFrom(query.from, pages);
 
@@ -228,19 +228,33 @@ export function runQuery(query: Query, pages: readonly Page[]): QueryResult {
 	//     row locals for unqualified access.
 	if (query.queryType === 'TASK') {
 		rows = flattenTaskRows(rows);
+
 	}
 
 	// 2. Data commands, in source order.
 	let grouped = false;
 	for (const cmd of query.commands) {
+		if(query.queryType==='TASK'&&deduplicateLinkedTasks&&!grouped&&(cmd.kind==='group-by'||cmd.kind==='limit'))rows=deduplicateTaskRows(rows);
 		const next = applyCommand(cmd, rows);
 		rows = next.rows;
 		grouped = grouped || next.grouped;
 	}
 
+	if(query.queryType==='TASK'&&deduplicateLinkedTasks&&!grouped)rows=deduplicateTaskRows(rows);
 	// 3. Projection per query type.
 	return project(query, rows, grouped);
 }
+
+        function deduplicateTaskRows(rows:Row[]):Row[]{
+         const seen=new Map<string,number>(),unique:Row[]=[];
+         for(const row of rows){
+          const key=row.task?.syncKey;
+          const index=key ? seen.get(key) : undefined;
+          if(index!==undefined){const prev=unique[index]!;unique[index]={...prev,task:{...prev.task!,copies:(prev.task?.copies??1)+1}};}
+          else{if(key)seen.set(key,unique.length);unique.push(row);}
+         }
+         return unique;
+        }
 
 /** Expand file.tasks into one Row per task, exposing task fields as locals. */
 function flattenTaskRows(rows: readonly Row[]): Row[] {
@@ -252,8 +266,8 @@ function flattenTaskRows(rows: readonly Row[]): Row[] {
 			const fields = kindOf(task) === 'object' ? (task as { entries: Record<string, import('./types').DqlValue> }).entries : {};
 			const locals: Record<string, import('./types').DqlValue> = { ...row.locals };
 			// Surface common task fields unqualified (completed, text, due, …).
-			for (const k of ['completed', 'checked', 'text', 'due', 'priority', 'created', 'link']) {
-				locals[k] = fields[k] ?? null;
+			for (const k of Object.keys(fields)) {
+				locals[k.toLowerCase()] = fields[k] ?? null;
 			}
 			out.push({ page: row.page, locals, task: toDqlTask(fields) });
 		}
@@ -268,7 +282,7 @@ function toDqlTask(fields: Record<string, import('./types').DqlValue>): import('
 	const path = typeof fields['__path'] === 'string' ? fields['__path'] : '';
 	const line = typeof fields['__line'] === 'number' ? fields['__line'] : -1;
 	const original = typeof fields['__original'] === 'string' ? fields['__original'] : '';
-	return { text, checked, path, line, originalLine: original };
+	return { text, checked, path, line, originalLine: original, syncId:typeof fields.syncId==='string'?fields.syncId:undefined, syncKey:typeof fields.syncKey==='string'?fields.syncKey:undefined, section:typeof fields.section==='string'?fields.section:undefined, card:typeof fields.card==='string'?fields.card:undefined };
 }
 
 interface Row {

@@ -1,5 +1,6 @@
 import { Notice, TFile, TFolder } from 'obsidian';
-import { generateEmptyWeeklyMarkdown } from '../parser';
+import { generateEmptyWeeklyMarkdown, parse } from '../parser';
+import { addWeeklyHistory } from '../weekly-history';
 import { normalizeTemplatePath, workspaceTemplateCandidates } from '../workspace-registry';
 import { askPassword } from './dialogs';
 import { PROTECTED_ROOT, freshId, safeName, type AssetRef, type Payload } from './runtime';
@@ -65,6 +66,50 @@ export class WorkspaceTemplates{
   }finally{
    password='';
    if(opened)await this.controller.crypto.call('drop',{token:opened.token}).catch(()=>{});
+  }
+ }
+ async installWeeklyHistory():Promise<boolean>{
+  await this.controller.mode.assertReady();
+  await this.controller.credentials.assertReady();
+  if(this.controller.session.active)throw Error('请先结束临时明文编辑');
+  const file=this.file(); if(!file)throw Error('未找到新建看板模板');
+  await this.controller.lockFile(file.path);
+  const expected=await this.app.vault.read(file);
+  let token:string|undefined;
+  let next:string;
+  this.controller.credentials.creating++;
+  try{
+   if(file.extension==='md') next=addWeeklyHistory(expected);
+   else{
+    let password=await askPassword(this.app,'更新周计划模板：请在此输入模板密码');
+    if(password===null)return false;
+    let opened;
+    try{opened=await this.controller.crypto.call('open-all',{text:expected,password});}finally{password='';}
+    token=opened.token;
+    const markdown=addWeeklyHistory(opened.markdown);
+    if(markdown===opened.markdown){new Notice('模板已包含历史未完成计划');return true;}
+    next=await this.controller.crypto.call('save-all',{text:expected,token,markdown,title:opened.title,
+     assets:opened.payloads.flatMap((p:Payload)=>p.assets),
+     definitions:parse(markdown).columns.map(({cards,tableContent,...definition})=>definition)});
+    const check=await this.controller.crypto.call('open-all',{text:next,domainToken:token});
+    try{if(check.markdown!==markdown)throw Error('模板写入前校验失败');}
+    finally{await this.controller.crypto.call('drop',{token:check.token});}
+   }
+   if(next===expected)return true;
+   await this.controller.credentials.assertReady();
+   if(this.file()?.path!==file.path)throw Error('模板配置已变化，请重新执行');
+   const backup='.apex-backups/weekly-history-'+Date.now()+(file.extension==='md'?'.md':'.apexenc');
+   await this.controller.store.mkdir('.apex-backups');
+   await this.app.vault.create(backup,expected);
+   if(await this.app.vault.adapter.read(backup)!==expected)throw Error('模板备份校验失败');
+   if(file.extension==='md')await this.app.vault.process(file,current=>{if(current!==expected)throw Error('模板已被其他窗口修改');return next;});
+   else await this.controller.store.enqueue(file.path,()=>this.controller.store.replace(file.path,expected,next));
+   this.clear();
+   new Notice('模板已增加“历史未完成计划”，之后新建的看板自动包含该分区。');
+   return true;
+  }finally{
+   if(token)await this.controller.crypto.call('drop',{token}).catch(()=>{});
+   this.controller.credentials.creating--;
   }
  }
  private async assetBytes(template:TemplateSnapshot,ref:AssetRef):Promise<Uint8Array>{

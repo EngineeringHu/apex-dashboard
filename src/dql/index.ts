@@ -1,5 +1,6 @@
 import type { DqlError, Expression, Page, QueryResult, Result } from './types';
-import { ok } from './types';
+import { ok, type DqlValue } from './types';
+import { makeObject } from './values';
 import { parseQuery } from './parser';
 import { runQuery } from './evaluator';
 import { lookupFunction } from './functions';
@@ -82,7 +83,7 @@ export type ExecuteOutcome =
 	| { readonly ok: true; readonly empty: true }
 	| { readonly ok: false; readonly error: DqlError };
 
-export function executeDql(dql: string, pages: readonly Page[]): ExecuteOutcome {
+export function executeDql(dql: string, pages: readonly Page[], options: {currentPage?:Page; deduplicateLinkedTasks?:boolean} = {}): ExecuteOutcome {
 	const trimmed = dql.trim();
 	if (trimmed.length === 0) return { ok: true, empty: true };
 
@@ -95,7 +96,12 @@ export function executeDql(dql: string, pages: readonly Page[]): ExecuteOutcome 
 	}
 
 	try {
-		const result = runQuery(parsed.value, pages);
+		const current=options.currentPage?.fields??{};
+        const file:Record<string,DqlValue>={};
+        for(const [key,value] of Object.entries(current))if(key.startsWith('file.'))file[key.slice(5)]=value;
+        const self=makeObject({...current,file:makeObject(file)});
+        const contextPages=pages.map(page=>({...page,fields:{...page.fields,this:self}}));
+		const result = runQuery(parsed.value, contextPages, options.deduplicateLinkedTasks);
 		return { ok: true, empty: false, result };
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);

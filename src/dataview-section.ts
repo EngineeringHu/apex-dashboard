@@ -1,4 +1,6 @@
 import { App, Platform, TFile, setIcon } from 'obsidian';
+import type { WeeklyHistoryContext } from './weekly-history-section';
+import { normalizeDataviewConfig } from './weekly-history-config';
 import type { HoverParent } from 'obsidian';
 import type { DashboardColumn, DataviewConfig, TrackerDataPoint } from './types';
 import type { DqlLink, DqlValue, QueryResult, ResultRow } from './dql/types';
@@ -16,6 +18,11 @@ import { normalizeExcludeFolders, isUnderExcludedFolder } from './exclude-folder
 let dvHoverParent: HoverParent | null = null;
 let dvOpener: ((file: TFile, subpath?: string) => void) | null = null;
 
+const renderContexts=new WeakMap<HTMLElement,{config:DataviewConfig;open:((file:TFile,subpath?:string)=>void)|null}>();
+function sectionContext(el:HTMLElement){
+ const root=el.closest<HTMLElement>('.dashboard-dataview-content');
+ return root ? renderContexts.get(root) : undefined;
+}
 const MAX_ROWS = 500; // hard cap to keep the DOM finite on pathological queries.
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
@@ -36,17 +43,25 @@ export function renderDataviewSection(
 	onOpenNote: ((file: TFile, subpath?: string) => void) | null,
 	reloadRegister: (fn: () => void) => void,
 	onConfigChange: ((config: DataviewConfig) => void) | null = null,
+	context?: WeeklyHistoryContext,
 ): void {
 	dvHoverParent = hoverParent;
 	dvOpener = onOpenNote;
 
-	const config = column.dataviewConfig ?? { query: '' };
+	const config = normalizeDataviewConfig(column.dataviewConfig ?? { query: '' });
+	setDataviewApp(app);
 	const content = el.createDiv({ cls: 'dashboard-dataview-content' });
+    const workspaceMode=config.openSource==='workspace';
+    const open=workspaceMode ? (file:TFile)=>{if(context&&!context.unavailable())void context.open(file).catch(error=>{content.createDiv({text:String(error)});});} : onOpenNote;
+    renderContexts.set(content,{config,open});
+    let generation=0;
 	let hasRun = false;
 
 	const render = async (): Promise<void> => {
 		content.empty();
+		const run=++generation;
 		hasRun = true;
+		if(workspaceMode&&(!context||context.unavailable())){content.createDiv({text:'关闭周记加密并完成解密后，可查看任务查询。'});return;}
 
 		if (config.query.trim().length === 0) {
 			renderEmptyState(content, 'dataview.emptyQuery', true);
@@ -57,14 +72,20 @@ export function renderDataviewSection(
 		renderScanningState(content);
 
 		try {
-			const pages = await buildPages(app);
+            const pages = await buildPages(app, {
+             excludePaths: workspaceMode && context?.templatePath ? [context.templatePath] : [],
+             excludeFolders: [...(config.excludeFolders??[]), '周记/_临时解密'],
+             canRead: ()=> !workspaceMode || (!!context && !context.unavailable()),
+            });
+            if(run!==generation)return;
+            if(workspaceMode&&context?.unavailable()){content.empty();content.createDiv({text:'加密状态已变化，请关闭加密后刷新。'});return;}
 			// Excluded folders: drop their pages before the query runs, so FROM /
 			// WHERE / GROUP BY never see them.
 			const excluded = normalizeExcludeFolders(config.excludeFolders ?? []);
 			const visiblePages = excluded.length > 0
 				? pages.filter(p => !isUnderExcludedFolder(p.file.path, excluded))
 				: pages;
-			const outcome = executeDql(config.query, visiblePages);
+			const outcome = executeDql(config.query, visiblePages, {currentPage:pages.find(p=>p.file.path===context?.currentPath),deduplicateLinkedTasks:config.deduplicateLinkedTasks});
 			// Drop the spinner before rendering the outcome — every render* below
 			// appends into `content`, so without this reset it would spin forever.
 			content.empty();
@@ -78,6 +99,7 @@ export function renderDataviewSection(
 			}
 			renderResult(content, outcome.result, app, () => { void render(); }, config, onConfigChange);
 		} catch (err) {
+			if(run!==generation)return;
 			const message = err instanceof Error ? err.message : String(err);
 			content.empty();
 			renderErrorState(content, message);
@@ -546,6 +568,7 @@ function renderTable(
 	const dc = displayColumns(result);
 	const valueStart = dc.hasImplicitFileCol ? 1 : 0;
 
+	container.appendChild(table);
 	/* ----- fixed column widths (colgroup must precede thead) ----- */
 	const colgroup = table.createEl('colgroup');
 	for (const w of layout.colWidths) {
@@ -588,7 +611,7 @@ function renderTable(
 	for (let ri = 0; ri < rows.length; ri++) {
 		const row = rows[ri]!;
 		const tr = tbody.createEl('tr');
-		attachRowOpen(tr, row);
+		if(!result.grouped)attachRowOpen(tr, row);
 		if (showRowNumbers) {
 			tr.createEl('td', { cls: 'dashboard-dataview-rownum', text: String(rowOffset + ri + 1) });
 		}
@@ -631,10 +654,22 @@ function renderTable(
 
 /** One TASK checkbox inside a cell: toggles the source line and busts the page
  *  cache so the change is reflected on the next query run. */
+function renderTaskRow(host:HTMLElement,row:ResultRow,rerender?:()=>void):void{
+ if(!row.task)return;
+ host.addClass('dashboard-dataview-task-row');
+ renderTaskCell(host,row.task,appRef,()=>rerender?.());
+ const label=host.createSpan({cls:'dashboard-dataview-task-text'+(row.task.checked?' is-done':'')});
+ renderDvInline(label,row.task.text);
+ if((row.task.copies??1)>1)host.createSpan({cls:'dashboard-dataview-task-copies',text:' · '+row.task.copies+' 处关联'});
+ host.title=[row.task.section,row.task.card].filter(Boolean).join(' / ');
+ attachRowOpen(host,row);
+ host.tabIndex=0;
+ host.addEventListener('keydown',e=>{if(e.target===host&&(e.key==='Enter'||e.key===' ')){e.preventDefault();host.click();}});
+}
 function renderTaskCell(td: HTMLElement, task: NonNullable<ResultRow['task']>, app: App, onToggled: () => void): void {
 	const checkbox = td.createEl('input', { cls: 'dashboard-dataview-task-checkbox', attr: { type: 'checkbox' } });
 	checkbox.checked = task.checked;
-	if (task.line >= 0) {
+	if (task.line >= 0 && !sectionContext(td)?.config.readOnlyTasks && !task.syncId) {
 		checkbox.addEventListener('change', () => {
 			void (async (): Promise<void> => {
 				const next = checkbox.checked;
@@ -649,7 +684,8 @@ function renderTaskCell(td: HTMLElement, task: NonNullable<ResultRow['task']>, a
 			})();
 		});
 	} else {
-		checkbox.disabled = true; // no source line to toggle (synthetic row).
+		checkbox.disabled = true;
+		checkbox.title = '请打开来源工作台编辑任务';
 	}
 }
 
@@ -663,7 +699,7 @@ function renderGroupedRow(tr: HTMLElement, row: ResultRow, result: QueryResult, 
 		for (const member of row.rows) {
 			const item = memberCell.createDiv({ cls: 'dashboard-dataview-group-member' });
 			const linkValue = member.values[0] ?? null;
-			renderValueCell(item, linkValue);
+			if(member.task)renderTaskRow(item,member);else renderValueCell(item, linkValue);
 		}
 	} else {
 		// No nested rows pre-projected: fall back to the raw value columns.
@@ -686,7 +722,7 @@ function renderList(container: HTMLElement, result: QueryResult, rows: readonly 
 	const dc = displayColumns(result);
 	for (const row of rows) {
 		const item = list.createDiv({ cls: 'dashboard-library-list-item dashboard-dataview-list-item' });
-		attachRowOpen(item, row);
+		if(!row.task&&!result.grouped)attachRowOpen(item, row);
 
 		if (result.grouped && row.groupKey !== undefined) {
 			const group = item.createDiv({ cls: 'dashboard-dataview-list-group' });
@@ -694,17 +730,14 @@ function renderList(container: HTMLElement, result: QueryResult, rows: readonly 
 			const members = item.createDiv({ cls: 'dashboard-dataview-list-members' });
 			if (row.rows) for (const member of row.rows) {
 				const m = members.createDiv({ cls: 'dashboard-dataview-list-member' });
-				renderValueCell(m, member.values[0] ?? null);
+				if(member.task)renderTaskRow(m,member,rerender);else renderValueCell(m, member.values[0] ?? null);
 			}
 			continue;
 		}
 
 		const main = item.createDiv({ cls: 'dashboard-dataview-list-main' });
 		if (result.queryType === 'TASK' && row.task) {
-			main.addClass('dashboard-dataview-task-row');
-			renderTaskCell(main, row.task, appRef, () => rerender?.());
-			const label = main.createSpan({ cls: 'dashboard-dataview-task-text' + (row.task.checked ? ' is-done' : '') });
-			renderDvInline(label, formatValue(row.values[0] ?? null));
+			renderTaskRow(main,row,rerender);
 		} else {
 			// First projected value as the primary line. For a bare LIST (or
 			// TABLE's implicit file column) values[0] IS the note link — render it
@@ -755,10 +788,7 @@ function renderFreeList(
 		const main = li.createDiv({ cls: 'dashboard-dataview-free-main' });
 
 		if (result.queryType === 'TASK' && row.task) {
-			main.addClass('dashboard-dataview-task-row');
-			renderTaskCell(main, row.task, appRef, () => rerender?.());
-			const label = main.createSpan({ cls: 'dashboard-dataview-task-text' + (row.task.checked ? ' is-done' : '') });
-			renderDvInline(label, row.task.text);
+			renderTaskRow(main,row,rerender);
 			return;
 		}
 
@@ -1181,13 +1211,14 @@ function renderDvLink(container: HTMLElement, content: string): void {
 
 	const file = resolveDvFile(path);
 	const span = container.createSpan({ cls: 'dashboard-wikilink', text: displayName });
+	const opener=sectionContext(container)?.open ?? dvOpener;
 	if (file && dvHoverParent && !Platform.isMobile) {
 		attachNoteHover(appRef, span, file, dvHoverParent, fragment ? `#${fragment}` : undefined);
 	}
 	span.addEventListener('click', (e) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (file && dvOpener) dvOpener(file, fragment ? `#${fragment}` : undefined);
+		if (file && opener) opener(file, fragment ? `#${fragment}` : undefined);
 	});
 }
 
@@ -1213,6 +1244,7 @@ function resolveDvFile(path: string): TFile | null {
 function attachRowOpen(el: HTMLElement, row: ResultRow): void {
 	const file = row.page?.file ?? null;
 	if (!file) return;
+	const opener=sectionContext(el)?.open ?? dvOpener;
 	el.addClass('is-clickable');
 	if (dvHoverParent && !Platform.isMobile) {
 		attachNoteHover(appRef, el, file, dvHoverParent);
@@ -1221,7 +1253,7 @@ function attachRowOpen(el: HTMLElement, row: ResultRow): void {
 		const target = e.target as HTMLElement;
 		// Don't hijack clicks on inner links/chips — let those resolve on their own.
 		if (target.closest('a, .dashboard-wikilink, .dashboard-dataview-task-checkbox')) return;
-		if (dvOpener) dvOpener(file);
+		if (opener) opener(file);
 	});
 }
 

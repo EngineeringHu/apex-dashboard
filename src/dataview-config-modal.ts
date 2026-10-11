@@ -2,6 +2,7 @@ import { App, Modal } from 'obsidian';
 import type { DataviewConfig } from './types';
 import { t } from './i18n';
 import { checkSyntax } from './dql';
+import { normalizeDataviewConfig, WEEKLY_HISTORY_QUERY } from './weekly-history-config';
 import { applyModalTheme } from './modal-theme';
 import { ExcludeFoldersEditor } from './exclude-folders-editor';
 
@@ -13,6 +14,7 @@ interface SampleQuery {
 }
 
 const SAMPLE_QUERIES: readonly SampleQuery[] = [
+	{key:'dataview.sample_weeklyHistory',dql:WEEKLY_HISTORY_QUERY},
 	{
 		key: 'dataview.sample_incompleteTasks',
 		dql: 'TASK\nFROM #project\nWHERE !completed',
@@ -57,7 +59,7 @@ export class DataviewConfigModal extends Modal {
 	constructor(app: App, config: DataviewConfig, onSave: (config: DataviewConfig) => void) {
 		super(app);
 		this.onSave = onSave;
-		this.config = { ...config };
+		this.config = { ...normalizeDataviewConfig(config) };
 	}
 
 	onOpen(): void {
@@ -74,6 +76,19 @@ export class DataviewConfigModal extends Modal {
 		header.createDiv({ cls: 'dashboard-modal-title', text: t('dataview.configure') });
 
 		const body = container.createDiv({ cls: 'dashboard-modal-body' });
+
+        for(const [key,label] of [['readOnlyTasks','任务只读（到来源编辑）'],['deduplicateLinkedTasks','关联任务去重']] as const){
+         const row=body.createEl('label',{cls:'dashboard-library-config-inline-row'});
+         const input=row.createEl('input',{type:'checkbox'});input.checked=this.config[key]===true;
+         row.createSpan({text:label});
+         input.addEventListener('change',()=>{this.config={...this.config,[key]:input.checked};});
+        }
+        const source=body.createEl('label',{text:'点击来源时打开：'});
+        const select=source.createEl('select');
+        select.createEl('option',{value:'note',text:'普通笔记'});
+        select.createEl('option',{value:'workspace',text:'Apex 工作台'});
+        select.value=this.config.openSource??'note';
+        select.addEventListener('change',()=>{this.config={...this.config,openSource:select.value==='workspace'?'workspace':'note'};});
 
 		// Sample query chips (inserted into the textarea on click).
 		const sampleSection = body.createDiv({ cls: 'dashboard-library-config-section' });

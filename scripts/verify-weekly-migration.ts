@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { prepareWeeklyNote } from './weekly-dql-migration';
+import { parse } from '../src/parser';
+import { WEEKLY_HISTORY_QUERY } from '../src/weekly-history-config';
+const original='---\ndashboard: true\ncustom: original\ncolumns:\n - name: History\n   type: dataview\n   dataview:\n    weeklyHistory: true\n    query: ""\n---\n## History\n\n## Tasks\n### A\n- [ ] keep task <!--apex-sync:g:i-->\n';
+const result=prepareWeeklyNote(original,'第1周-9月27号',+new Date(2026,9,10));
+assert.equal(result.name,'2026年第1周-9月27号');
+assert.equal(result.week,'2026-09-27');
+assert.equal(result.markdown.slice(result.markdown.indexOf('## History')),original.slice(original.indexOf('## History')),'body unchanged');
+assert.ok(result.markdown.includes('custom: original'));
+assert.equal(parse(result.markdown).columns[0]?.dataviewConfig?.query,WEEKLY_HISTORY_QUERY);
+assert.deepEqual(prepareWeeklyNote(result.markdown,result.name,0),result,'idempotent rerun');
+assert.equal(prepareWeeklyNote(original,'第9周-12月27号',+new Date(2027,0,2)).name,'2026年第9周-12月27号');
+assert.throws(()=>prepareWeeklyNote(original,'unknown',0),'unknown year never silently guessed');
+console.log('weekly year migration: dates, exact body preservation, query upgrade, rerun and cross-year passed');
