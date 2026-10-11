@@ -1,3 +1,5 @@
+import { attachTableLayout, disposeTableLayouts } from './table-layout-ui';
+import { reconcileTableLayout, tableColumnDefaults, tableHeaderRowCount, type TableStructureChange } from './table-layout';
 import { type TableSectionCell, parseTableSectionRows, buildMergedTableGrid, serializeMergedGrid, gridToDenseRows, serializeDenseRows, addTableRowAt, deleteTableRowAt, insertTableColumnAt, deleteTableColumnAt, tableCardId, tableCardMarker } from './table-model';
 import { DailyNoteLinkModal } from './task-daily-note-modal';
 import { App, Menu, Modal, Notice, Platform, TFile, setIcon } from 'obsidian';
@@ -1613,6 +1615,7 @@ export function renderDashboard(
 	activeHoverParent = hoverParent;
 	activeNoteOpener = callbacks.onOpenNoteInPopover ?? null;
 
+	disposeTableLayouts(container);
 	container.empty();
 	container.addClass('dashboard-kanban');
 
@@ -1709,7 +1712,7 @@ function saveCollapsedSections(app: App, collapsed: Set<string>): void {
 }
 
 function attachSectionResizeHandle(el: HTMLElement, column: DashboardColumn, callbacks: RenderCallbacks): void {
-	if (Platform.isMobile) return;
+	if (Platform.isMobile || getSectionType(column) === 'table') return;
 	// Memo sections are driven by a fixed CSS height, so the drag must write
 	// inline height as well; other types only clamp via max-height.
 	const isFixedHeight = getSectionType(column) === 'memo';
@@ -4081,7 +4084,8 @@ function renderTaskCell(td: HTMLElement, cell: TableSectionCell, onChange: (valu
 }
 
 export function renderTableSection(el: HTMLElement, column: DashboardColumn, callbacks: RenderCallbacks, app: App): void {
-	const onEdit = (content: string) => callbacks.onTableContentChange(column.name, content);
+    disposeTableLayouts(el);
+	const onEdit = (content: string, change: TableStructureChange | 'cells' = 'cells') => callbacks.onTableContentChange(column.name, content, change);
 	const wrap = el.createDiv({ cls: 'dashboard-table-wrap' });
 	const rows = parseTableSectionRows(column.tableContent ?? '');
 	if (rows.length === 0) {
@@ -4090,6 +4094,8 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 	}
 	const grid = buildMergedTableGrid(rows);
 	const table = wrap.createEl('table', { cls: 'apex-table' });
+	const presentation = tableColumnDefaults(column.tableContent ?? '');
+	const headerRows = tableHeaderRowCount(rows);
 	const dense = gridToDenseRows(grid);
 	const placed = new Set(grid.flat().map(cell => tableCardId(cell.text)).filter(Boolean));
 	const unplaced = column.cards.filter(card => !placed.has(card.id));
@@ -4098,15 +4104,28 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 		cardEl.addClass('apex-table-todo-card');
 		cardEl.querySelector('.dashboard-card-header')?.setAttribute('draggable', 'false');
 		cardEl.querySelector('.dashboard-card-resize-handle')?.remove();
+		// In a narrow table column, reserve the first line for task text. Hidden
+		// flex buttons otherwise keep their width and squeeze Chinese into a column.
+		cardEl.querySelectorAll<HTMLElement>('.dashboard-task-item').forEach(item => {
+			const buttons = Array.from(item.querySelectorAll<HTMLButtonElement>(':scope > button'));
+			if (!buttons.length) return;
+			const actions = item.createDiv({ cls: 'apex-table-task-actions' });
+			buttons.forEach(button => actions.appendChild(button));
+		});
 		host.appendChild(cardEl);
 	};
 	grid.forEach((cells, r) => {
 		const tr = table.createEl('tr');
 		for (const cell of cells) {
 			const td = tr.createEl(r === 0 ? 'th' : 'td');
+			td.dataset.tableRow = String(r);
+			td.dataset.tableCol = String(cell.col);
+			const role = presentation[cell.col]?.role ?? 'generic';
+			td.dataset.tableRole = role === 'generic' ? (['role', 'arrow', 'goal'][cell.col] ?? 'task') : role;
 			if (cell.cs > 1) td.setAttribute('colspan', String(cell.cs));
 			if (cell.rs > 1) td.setAttribute('rowspan', String(cell.rs));
-			const isTaskCell = r > 1 && cell.col >= 2 && cell.cs === 1;
+			const isTaskCell = r >= headerRows && cell.cs === 1 &&
+				(role === 'generic' ? cell.col >= 2 : role !== 'role' && role !== 'arrow');
 			const embeddedId = tableCardId(cell.text);
 			const embedded = column.cards.find(card => card.id === embeddedId);
 			if (embeddedId) {
@@ -4157,17 +4176,17 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 						.setIcon('plus')
 						.onClick(() => {
 							const next = addTableRowAt(dense, r, grid);
-							onEdit(serializeDenseRows(next));
+							onEdit(serializeDenseRows(next), { axis: 'rows', kind: 'insert', index: r + 1 });
 						})
 				);
-				if (r > 1) {
+				if (r >= headerRows) {
 					menu.addItem((item) =>
 						item
 							.setTitle(t('table.deleteRow'))
 							.setIcon('trash-2')
 							.onClick(() => {
 								const next = deleteTableRowAt(dense, r);
-								onEdit(serializeDenseRows(next));
+								onEdit(serializeDenseRows(next), { axis: 'rows', kind: 'delete', index: r });
 							})
 					);
 				}
@@ -4178,7 +4197,7 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 						.setIcon('align-start')
 						.onClick(() => {
 							const next = insertTableColumnAt(dense, cell.col);
-							onEdit(serializeDenseRows(next));
+							onEdit(serializeDenseRows(next), { axis: 'columns', kind: 'insert', index: cell.col });
 						})
 				);
 				menu.addItem((item) =>
@@ -4187,7 +4206,7 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 						.setIcon('align-end')
 						.onClick(() => {
 							const next = insertTableColumnAt(dense, cell.col + cell.cs);
-							onEdit(serializeDenseRows(next));
+							onEdit(serializeDenseRows(next), { axis: 'columns', kind: 'insert', index: cell.col + cell.cs });
 						})
 				);
 				if ((dense[0]?.length ?? 0) > 1) {
@@ -4197,7 +4216,7 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 							.setIcon('trash-2')
 							.onClick(() => {
 								const next = deleteTableColumnAt(dense, cell.col);
-								onEdit(serializeDenseRows(next));
+								onEdit(serializeDenseRows(next), { axis: 'columns', kind: 'delete', index: cell.col });
 							})
 					);
 				}
@@ -4208,6 +4227,7 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 				if (td.hasClass('apex-table-cell--tasks')) return;
 				const target = e.target as HTMLElement;
 				if (target.closest('.apex-table-task-row, .apex-table-task-add')) return;
+				td.empty();
 				const textarea = td.createEl('textarea', { cls: 'apex-table-cell-input apex-table-cell-textarea' });
 				textarea.value = cell.text.replace(/<br\s*\/?>/gi, '\n');
 				textarea.focus();
@@ -4250,6 +4270,10 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 		for (const card of unplaced) renderEmbedded(retained, card);
 	}
 	wrap.createDiv({ cls: 'dashboard-table-hint', text: t('table.hint') });
+	attachTableLayout(el, wrap, table, column.tableContent ?? '', callbacks.getTableLayout?.(column) ?? {
+		layout: reconcileTableLayout(undefined, column.tableContent ?? '', undefined, column.height),
+		save: async () => {},
+	});
 }
 // ---- Table edit modal (sectionType 'table') ---------------------------------
 

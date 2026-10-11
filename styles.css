@@ -18891,23 +18891,23 @@ body.is-mobile .dashboard-media-item .dashboard-media-tagbtn { opacity: 1; }
 }
 
 /* ---- Table section (sectionType 'table') ---- */
-.dashboard-table-wrap { padding: 10px 14px 16px; overflow-x: auto; }
+.dashboard-table-wrap { padding: 10px 14px 16px; overflow: auto; min-height: 0; }
 .dashboard-table-wrap .apex-table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1.5px solid #bfa596; border-radius: 10px; font-size: .92em; line-height: 1.5; overflow: hidden; }
 .apex-table th, .apex-table td { border: 1px solid #dcc9bc; padding: 6px 10px; text-align: left; vertical-align: top; }
 .apex-table tr:first-child th { background: #eadfd6; color: #6d4c41; font-weight: 600; text-align: center; }
 .apex-table th[colspan], .apex-table td[colspan] { background: #eadfd6; color: #6d4c41; font-weight: 600; text-align: center; }
-.apex-table td[rowspan]:first-child { background: #a1887f; color: #fff; font-weight: 600; white-space: nowrap; }
-.apex-table td[rowspan]:nth-child(2) { background: #a1887f; color: #fff; text-align: center; width: 2.2em; padding: 6px 4px; }
-.apex-table td[rowspan]:nth-child(3) { background: #f5ece6; }
-.apex-table td:first-child:not([rowspan]):not([colspan]) { text-align: center; color: #8d6e63; font-weight: 600; white-space: nowrap; }
-.apex-table td:nth-child(n+5) { text-align: center; }
+.apex-table td[rowspan][data-table-role="role"] { background: #a1887f; color: #fff; font-weight: 600; white-space: nowrap; }
+.apex-table td[rowspan][data-table-role="arrow"] { background: #a1887f; color: #fff; text-align: center; width: 2.2em; padding: 6px 4px; }
+.apex-table td[rowspan][data-table-role="goal"] { background: #f5ece6; }
+.apex-table td[data-table-role="role"]:not([rowspan]):not([colspan]) { text-align: center; color: #8d6e63; font-weight: 600; white-space: nowrap; }
+.apex-table td[data-table-role="task"] { text-align: center; }
 .dashboard-table-wrap .apex-table th { background: #eadfd6; color: #6d4c41; }
 .theme-dark .apex-table { border-color: #6d5c53; }
 .theme-dark .apex-table th, .theme-dark .apex-table td { border-color: #57493f; }
 .theme-dark .apex-table th[colspan], .theme-dark .apex-table td[colspan] { background: #3e322b; color: #d7ccc8; }
 .theme-dark .dashboard-table-wrap .apex-table th { background: #3e322b; color: #d7ccc8; }
-.theme-dark .apex-table td[rowspan]:first-child, .theme-dark .apex-table td[rowspan]:nth-child(2) { background: #6d4c41; }
-.theme-dark .apex-table td[rowspan]:nth-child(3) { background: #332a25; }
+.theme-dark .apex-table td[rowspan][data-table-role="role"], .theme-dark .apex-table td[rowspan][data-table-role="arrow"] { background: #6d4c41; }
+.theme-dark .apex-table td[rowspan][data-table-role="goal"] { background: #332a25; }
 
 /* ---- Table edit modal ---- */
 .dashboard-table-edit-area { width: 100%; min-height: 340px; resize: vertical; font-family: var(--font-monospace); font-size: 12px; line-height: 1.6; }
@@ -18941,7 +18941,7 @@ body.is-mobile .dashboard-media-item .dashboard-media-tagbtn { opacity: 1; }
 .dashboard-table-hint { margin-top: 8px; font-size: 11px; opacity: .55; text-align: right; }
 
 /* Standard Apex To-Do cards embedded in weekly table cells. */
-.apex-table .apex-table-todo-card { min-width: 190px !important; max-width: none !important; width: 100%; margin: 0; text-align: left; white-space: normal; font-weight: normal; }
+.apex-table .apex-table-todo-card { min-width: 0 !important; max-width: none !important; width: 100%; margin: 0; text-align: left; white-space: normal; font-weight: normal; }
 .apex-table-todo-card .dashboard-card-header { cursor: default; padding: 8px; }
 .apex-table-todo-card .dashboard-card-body { padding: 8px; }
 .apex-table-todo-card .dashboard-task-list { min-height: 36px; }
@@ -18980,3 +18980,43 @@ body.is-mobile .dashboard-media-item .dashboard-media-tagbtn { opacity: 1; }
 .dashboard-weekly-history-group h4 { margin: 16px 0 8px; }
 .dashboard-weekly-history-task { display: flex; flex-direction: column; align-items: flex-start; white-space: normal; text-align: left; width: 100%; height: auto; padding: 10px 12px; margin: 6px 0; gap: 4px; }
 .dashboard-weekly-history-task small { color: var(--text-muted); }
+
+/* Table presentation lives in plugin settings, independently of note contents. */
+.apex-table-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.apex-table-section[data-table-height-mode="auto"] > .dashboard-table-wrap { flex-shrink: 0; }
+.apex-table-section .apex-table { table-layout: fixed; max-width: none; }
+.apex-table-section .apex-table th,
+.apex-table-section .apex-table td { box-sizing: border-box; white-space: normal !important; overflow-wrap: anywhere; }
+.apex-table-layout-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-shrink: 0; padding: 0 14px 6px; }
+.apex-table-layout-toolbar button { font-size: 12px; height: 26px; padding: 2px 8px; }
+.apex-table-layout-help { color: var(--text-muted); font-size: 11px; }
+.apex-table-canvas { position: relative; min-width: 0; }
+.apex-table-column-ruler { display: flex; height: 20px; margin-left: 1.5px; color: var(--text-muted); font-size: 10px; user-select: none; }
+.apex-table-column-slot { position: relative; flex: none; text-align: center; border-right: 1px solid var(--background-modifier-border); box-sizing: border-box; }
+.apex-table-column-grip { position: absolute; right: -5px; top: 0; width: 10px; height: 22px; cursor: col-resize; z-index: 2; touch-action: none; }
+.apex-table-row-grip { position: absolute; left: -12px; width: 12px; height: 8px; border-top: 2px solid var(--background-modifier-border); cursor: row-resize; z-index: 2; touch-action: none; }
+.apex-table-section-grip { height: 8px; min-height: 8px; flex-shrink: 0; margin-top: 4px; border-bottom: 2px solid var(--background-modifier-border); cursor: row-resize; touch-action: none; }
+.apex-table-column-grip:hover, .apex-table-column-grip:focus-visible,
+.apex-table-row-grip:hover, .apex-table-row-grip:focus-visible,
+.apex-table-section-grip:hover, .apex-table-section-grip:focus-visible { background: var(--interactive-accent); outline: 1px solid var(--interactive-accent); }
+.apex-table-resizing { user-select: none; }
+.apex-table .apex-table-todo-card { box-sizing: border-box; overflow: visible; padding: 0; }
+.apex-table-todo-card .dashboard-card-header { flex-wrap: wrap; gap: 4px; padding: 6px; margin-bottom: 0; }
+.apex-table-todo-card .dashboard-card-title { flex: 1 0 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.apex-table-todo-card .dashboard-card-actions { flex-wrap: wrap; opacity: .45; }
+.apex-table-todo-card:focus-within .dashboard-card-actions { opacity: 1; }
+.apex-table-todo-card .dashboard-card-body { overflow: visible; max-height: none; min-width: 0; padding: 6px; }
+.apex-table-todo-card .dashboard-task-item { display: grid; grid-template-columns: 14px minmax(0, 1fr); align-items: start; padding: 4px; }
+.apex-table-todo-card .dashboard-task-item--hidden { display: none; }
+.apex-table-todo-card .dashboard-task-checkbox { grid-column: 1; grid-row: 1; margin: 2px 0 0; }
+.apex-table-todo-card .dashboard-task-text { grid-column: 2; grid-row: 1; }
+.apex-table-todo-card .dashboard-task-toggle { grid-column: 1; grid-row: 2; align-self: center; }
+.apex-table-task-actions { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; gap: 2px; opacity: .5; }
+.apex-table-task-actions > button { opacity: 1; width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 2px; }
+.apex-table-todo-card .dashboard-task-item:hover .apex-table-task-actions,
+.apex-table-todo-card .dashboard-task-item:focus-within .apex-table-task-actions { opacity: 1; }
+.apex-table-todo-card .dashboard-task-text,
+.apex-table-todo-card .dashboard-task-input { min-width: 0; overflow-wrap: anywhere; }
+.apex-table-todo-card .dashboard-task-text { white-space: normal; }
+.apex-table-section .dashboard-table-hint { margin-top: 8px; color: var(--text-muted); font-size: 11px; }
+.is-mobile .apex-table-layout-help, .is-mobile .apex-table-column-ruler { display: none; }

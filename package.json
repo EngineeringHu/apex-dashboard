@@ -24,9 +24,10 @@
     "typecheck": "tsc -p tsconfig.check.json --skipLibCheck",
     "pretest": "npm run build",
     "test": "node test.mjs",
-    "test:upstream": "npm run test:mobile-stability && npm run test:weather-mapping && npm run test:folder-tag-search && npm run test:visible-properties && npm run test:calendar-task-insert && npm run test:calendar-daynum && npm run test:path-picker && npm run test:library-cover && npm run test:library-card-size && npm run test:media-thumb-size && npm run test:countdown-picker && npm run test:gallery-placeholder && npm run test:week-start-name && npm run test:weekly-todo",
+    "test:upstream": "npm run test:mobile-stability && npm run test:weather-mapping && npm run test:folder-tag-search && npm run test:visible-properties && npm run test:calendar-task-insert && npm run test:calendar-daynum && npm run test:path-picker && npm run test:library-cover && npm run test:library-card-size && npm run test:media-thumb-size && npm run test:countdown-picker && npm run test:gallery-placeholder && npm run test:week-start-name && npm run test:weekly-todo && npm run test:table-layout",
     "benchmark": "node scripts/benchmark-crypto.mjs",
-    "test:weekly-todo": "esbuild scripts/verify-weekly-todo.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-weekly-todo.cjs --alias:obsidian=./scripts/obsidian-stub.ts --log-level=warning && node node_modules/.tmp/verify-weekly-todo.cjs"
+    "test:weekly-todo": "esbuild scripts/verify-weekly-todo.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-weekly-todo.cjs --alias:obsidian=./scripts/obsidian-stub.ts --log-level=warning && node node_modules/.tmp/verify-weekly-todo.cjs",
+    "test:table-layout": "esbuild scripts/verify-table-layout.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-table-layout.cjs --alias:obsidian=./scripts/obsidian-stub.ts --log-level=warning && node node_modules/.tmp/verify-table-layout.cjs"
   },
   "keywords": [],
   "license": "0-BSD",

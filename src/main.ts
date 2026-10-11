@@ -1,3 +1,4 @@
+import { TableLayoutStore, sanitizeTableLayouts } from './table-layout';
 import { Notice, Plugin, TAbstractFile, TFile, TFolder, WorkspaceLeaf } from 'obsidian';
 import { DEFAULT_SETTINGS, type DashboardSettings, type CountdownConfig } from './types';
 import { DashboardSettingTab } from './settings';
@@ -81,6 +82,8 @@ function migrateCountdowns(raw: Record<string, unknown>): CountdownConfig[] {
 export default class DashboardPlugin extends Plugin {
 	secure!: SecureController;
 	settings!: DashboardSettings;
+	tableLayouts!: TableLayoutStore;
+	private settingsSaveQueue: Promise<void> = Promise.resolve();
 	backupService!: BackupService;
 	mediaTagService!: MediaTagService;
 	habitService!: HabitService;
@@ -88,6 +91,7 @@ export default class DashboardPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 			await this.loadSettings();
+			this.tableLayouts = new TableLayoutStore(() => this.settings.tableLayouts!, () => this.saveSettings());
 			this.secure = new SecureController(this);
 			await this.secure.mode.load();
 			this.secure.register();
@@ -199,6 +203,7 @@ export default class DashboardPlugin extends Plugin {
 		// workspace file update the list (and the active entry) so the engine
 		// watchers never point at a path that no longer exists.
 		this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
+			void this.tableLayouts.renamePath(oldPath, file.path).catch(error => console.error('Table layout rename failed', error));
 			if (file instanceof TFile) {
 				void this.handleWorkspaceFileRenamed(file, oldPath);
 				this.refreshFolderModeSwitcher(file.path, oldPath);
@@ -321,6 +326,7 @@ export default class DashboardPlugin extends Plugin {
 		this.settings = {
 			...DEFAULT_SETTINGS,
 			...raw,
+			tableLayouts: sanitizeTableLayouts(raw.tableLayouts),
 			countdowns,
 			mediaTags,
 			workspaceFiles: workspace.files,
@@ -340,7 +346,9 @@ export default class DashboardPlugin extends Plugin {
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		const run = this.settingsSaveQueue.catch(() => {}).then(() => this.saveData(this.settings));
+		this.settingsSaveQueue = run;
+		await run;
 	}
 
 	refreshAllDashboards(): void {

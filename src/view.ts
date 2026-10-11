@@ -1,3 +1,5 @@
+import { disposeTableLayouts } from './table-layout-ui';
+import type { DashboardColumn } from './types';
 import { Events, HoverParent, HoverPopover, ItemView, MarkdownView, Modal, Notice, Platform, setIcon, WorkspaceLeaf, TFile } from 'obsidian';
 import { nowMoment } from './datetime';
 import type DashboardPlugin from './main';
@@ -279,6 +281,7 @@ export class DashboardView extends ItemView implements HoverParent {
 		this.pomodoroUnsubscribe = null;
 		this.readingUnsubscribe?.();
 		this.readingUnsubscribe = null;
+		disposeTableLayouts(this.containerEl);
 		this.sync.destroy();
 		if (this.protectedBridge) { this.sync.clearMemory(); this.data = null; }
 	}
@@ -298,6 +301,18 @@ export class DashboardView extends ItemView implements HoverParent {
 
 	private handleDataUpdate(data: DashboardData, source: DashboardUpdateSource): void {
 		const previous = this.data;
+		const layoutPath = this.tableLayoutPath();
+		if (source === 'local' && previous) {
+			for (const [index, column] of data.columns.entries()) {
+				if (column.sectionType !== 'table' || (this.protectedBridge && !column.tableContent)) continue;
+				const before = previous.columns[index];
+				if (before?.sectionType === 'table' && before.name !== column.name &&
+					!data.columns.some(c => c.name === before.name) && !previous.columns.some(c => c.name === column.name)) {
+					void this.plugin.tableLayouts.renameSection(layoutPath, this.tableLayoutKey(before, previous), this.tableLayoutKey(column, data)).catch(error => console.error(error));
+				}
+				void this.plugin.tableLayouts.contentChanged(layoutPath, this.tableLayoutKey(column, data), column.tableContent ?? '', 'cells').catch(error => console.error(error));
+			}
+		}
 		this.data = data;
 		if (this.isOpening || !this.isOpen) {
 			this.pendingInitialData = data;
@@ -360,6 +375,7 @@ export class DashboardView extends ItemView implements HoverParent {
 	}
 
 	private render(data: DashboardData): void {
+		disposeTableLayouts(this.containerEl);
 		// Detach the sidebar widgets before tearing the rest down. If their inputs
 		// (signature below) are unchanged, this exact node is re-attached in
 		// renderSidebar instead of being rebuilt - dashboard data mutations then
@@ -392,6 +408,12 @@ export class DashboardView extends ItemView implements HoverParent {
 		const savedKanbanScroll = kanbanEl ? kanbanEl.scrollTop : 0;
 		const savedSidebarScroll = sidebarScrollEl ? sidebarScrollEl.scrollTop : 0;
 
+		const savedTableScrolls = new Map<string, { left: number; top: number }>();
+		root?.querySelectorAll<HTMLElement>('.dashboard-table-wrap').forEach(el => {
+			const section = el.closest<HTMLElement>('.dashboard-section-row');
+			const key = section?.dataset.secureId ?? section?.dataset.column;
+			if (key) savedTableScrolls.set(key, { left: el.scrollLeft, top: el.scrollTop });
+		});
 		const savedCardScrolls = new Map<string, number>();
 		root?.querySelectorAll('.dashboard-section-cards').forEach((el) => {
 			const section = (el as HTMLElement).closest('.dashboard-section-row');
@@ -535,6 +557,13 @@ export class DashboardView extends ItemView implements HoverParent {
 			const key = section?.getAttribute('data-column') ?? '';
 			const saved = savedCardScrolls.get(key);
 			if (saved !== undefined) (el as HTMLElement).scrollLeft = saved;
+		});
+
+		container.querySelectorAll<HTMLElement>('.dashboard-table-wrap').forEach(el => {
+			const section = el.closest<HTMLElement>('.dashboard-section-row');
+			const key = section?.dataset.secureId ?? section?.dataset.column;
+			const saved = key ? savedTableScrolls.get(key) : undefined;
+			if (saved) { el.scrollLeft = saved.left; el.scrollTop = saved.top; }
 		});
 
 		// Restore per-task-list scroll positions
@@ -1169,7 +1198,14 @@ export class DashboardView extends ItemView implements HoverParent {
 						this.refreshSectionInPlace(columnName);
 					});
 				},
-				onTableContentChange: (columnName: string, content: string) => {
+				getTableLayout: (column: DashboardColumn) => {
+					const path = this.tableLayoutPath(), key = this.tableLayoutKey(column);
+					return { layout: this.plugin.tableLayouts.read(path, key, column.tableContent ?? '', column.height),
+						save: layout => this.plugin.tableLayouts.save(path, key, layout) };
+				},
+				onTableContentChange: (columnName: string, content: string, change) => {
+					const column = this.data?.columns.find(c => c.name === columnName);
+					if (column) void this.plugin.tableLayouts.contentChanged(this.tableLayoutPath(), this.tableLayoutKey(column), content, change).catch(error => console.error(error));
 					this.suppressNextRender = true;
 					void this.sync.updateTableContent(columnName, content).then(() => {
 						this.refreshSectionInPlace(columnName);
@@ -1649,6 +1685,17 @@ export class DashboardView extends ItemView implements HoverParent {
 		return true;
 	}
 
+	private tableLayoutPath(): string {
+		return this.protectedBridge?.path?.() ?? this.sync.getFilePath();
+	}
+	private tableLayoutKey(column: DashboardColumn, data = this.data): string {
+		if (column.protectedBlockId) return 'secure:' + column.protectedBlockId;
+		const columns = data?.columns ?? [];
+		const index = columns.indexOf(column);
+		const occurrence = columns.slice(0, index < 0 ? 0 : index).filter(c => c.name === column.name).length;
+		return JSON.stringify([column.name, occurrence]);
+	}
+
 	private refreshSectionInPlace(columnName: string): boolean {
 		if (!this.data) return false;
 		const kanban = (this.containerEl.children[1] as HTMLElement)?.querySelector<HTMLElement>('.dashboard-kanban');
@@ -1664,6 +1711,7 @@ export class DashboardView extends ItemView implements HoverParent {
 		// the "page jumps away after finishing an edit" symptom. Carry the old
 		// row's scroll positions over the node swap.
 		const scrollStates = captureScrollStates(oldEl);
+		disposeTableLayouts(oldEl);
 		oldEl.replaceWith(newEl);
 		restoreScrollStates(newEl, scrollStates);
 		for (const fn of this.dndCleanupFns) fn();

@@ -1,8 +1,11 @@
+import type { TableLayouts, TableLayoutBinding, TableStructureChange } from './table-layout';
 import type { Language } from './i18n';
 import type { CalendarTaskFilter } from './alltasks-scan';
 import type { TFile } from 'obsidian';
 
 export interface DashboardSettings {
+	/** Presentation only; never serialized into dashboard Markdown. */
+	tableLayouts?: TableLayouts;
 	/** Path of the ACTIVE workspace file (no .md extension). */
 	dashboardFile: string;
 	/** All workspace board files in switcher order (button i+1). Paths follow
@@ -668,7 +671,8 @@ export interface RenderCallbacks {
 	onArchiveTasks(columnName: string): void;
 	onLibraryConfigChange(columnName: string, config: LibraryConfig): void;
 	onDataviewConfigChange(columnName: string, config: DataviewConfig): void;
-	onTableContentChange(columnName: string, content: string): void;
+	onTableContentChange(columnName: string, content: string, change?: TableStructureChange | 'cells'): void;
+	getTableLayout?(column: DashboardColumn): TableLayoutBinding;
 	onQuickNoteCreate(preset: QuickNotePreset): void;
 	onQuickNoteCapture(text: string): void;
 	onOpenPinnedNote(note: PinnedNote): void;

@@ -1,3 +1,4 @@
+import { disposeTableLayouts } from '../src/table-layout-ui';
 import { App, TFile } from 'obsidian';
 import { renderTableSection } from '../src/renderer';
 import { parse, serialize, generateEmptyWeeklyMarkdown } from '../src/parser';
@@ -178,6 +179,7 @@ export async function run(realApp: App) {
         for (const modal of document.querySelectorAll('.modal-container')) {
             if (!modalsBefore.has(modal)) (modal.querySelector('.modal-close-button, .modal-header-button') as HTMLElement | null)?.click();
         }
+        disposeTableLayouts(host);
         host.remove();
         engine.clearMemory();
     }

@@ -48,7 +48,7 @@ export class ProtectedView extends FileView {
   private async disposeBoard():Promise<void>{if(this.board){const b=this.board;this.board=null;await b.onClose();this.removeChild(b);b.containerEl.remove();}}
   private async mountBoard():Promise<void>{
     this.contentEl.empty();this.contentEl.addClass('apex-protected-host');
-    const b=new DashboardView(this.leaf,this.controller.plugin,{data:()=>this.model,save:d=>this.saveBoard(d),callbacks:base=>this.callbacks(base),decorate:root=>this.decorate(root)});
+    const b=new DashboardView(this.leaf,this.controller.plugin,{path:()=>this.file?.path??'',data:()=>this.model,save:d=>this.saveBoard(d),callbacks:base=>this.callbacks(base),decorate:root=>this.decorate(root)});
     this.board=b;this.addChild(b);this.contentEl.appendChild(b.containerEl);b.containerEl.addClass('apex-protected-dashboard');await b.onOpen();
   }
   private showBoard():void{this.board?.containerEl.show();this.board?.setProtectedData(this.model);}
