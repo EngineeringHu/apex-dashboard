@@ -1,5 +1,8 @@
 import { Notice, SuggestModal, TFile, type App } from 'obsidian';
 import { parse } from '../parser';
+import { stampWeeklyDate } from '../weekly-history';
+import { weekStartMonthDay, weekStartYear } from '../workspace-registry';
+import { t } from '../i18n';
 import type DashboardPlugin from '../main';
 import { CryptoWorker, ProtectedStore, PROTECTED_ROOT, TEMP_ROOT, report, type AssetRef } from './runtime';
 import { ProtectedView, SECURE_VIEW } from './board-view';
@@ -34,6 +37,7 @@ export class SecureController {
     command('password','设置或更改统一周记密码',()=>this.credentials.setup());
     command('restore-names','恢复旧周记的明文文件名',()=>this.credentials.restoreNames());
     command('recover-password','恢复统一密码更新',()=>this.credentials.recover());
+    p.addCommand({id:'weekly-history-template',name:'周计划：为新建看板模板添加历史未完成计划',callback:()=>void this.templates.installWeeklyHistory().catch(report)});
     command('lock-template','锁定加密看板模板',async()=>{this.templates.clear();new Notice('加密模板已锁定，下次新建时需要重新解锁');});
     command('lock-all','锁定已展开的周记分区',()=>this.lockAll());
     command('resume-mode','继续未完成的加密开关切换',()=>this.mode.resume());
@@ -71,13 +75,15 @@ export class SecureController {
   async prepareSection(path:string):Promise<void>{if(this.views(path).some(v=>v.isWholeEditing()))await this.lockFile(path);}
   private async lockEverything():Promise<void>{if(this.mode.busy||this.credentials.busy)return;if(this.session.active)await this.session.finish();else if(this.mode.enabled)await this.lockAll();}
   async create(initialTitle?:string):Promise<void>{
+    const now=new Date(),parts=weekStartMonthDay(now);
+    const defaultTitle=t('workspace.defaultWeeklyName',{year:weekStartYear(now),...parts,n:this.plugin.folderWorkspaceFiles().length+this.workspaceFiles().length+1});
     await this.mode.assertReady();
-    if(!this.mode.enabled){const title=initialTitle||await askText(this.plugin.app,'新建周记名称','新的周计划');if(title)await this.plugin.createWorkspace(title);return;}
+    if(!this.mode.enabled){const title=initialTitle||await askText(this.plugin.app,'新建周记名称',defaultTitle);if(title)await this.plugin.createWorkspace(title);return;}
     if(this.session.active)throw Error('请先结束临时明文模式');
-    const title=initialTitle||await askText(this.plugin.app,'新建加密周记名称','新的周计划');if(!title)return;
+    const title=initialTitle||await askText(this.plugin.app,'新建加密周记名称',defaultTitle);if(!title)return;
     const template=await this.templates.read();if(!template)return;
     await this.mode.assertReady();if(!this.mode.enabled)throw Error('加密开关已变化，请重新新建');
-    await this.encryptCopy(template.markdown,title,template.path,false,template);
+    await this.encryptCopy(stampWeeklyDate(template.markdown,title),title,template.path,false,template);
   }
   async importCurrent():Promise<void>{
     if(this.session.active)throw Error('请先结束临时明文模式');

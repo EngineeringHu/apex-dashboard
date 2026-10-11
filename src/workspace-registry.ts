@@ -196,3 +196,7 @@ export function workspaceTemplateCandidates(value: unknown): string[] {
  if(!path||path.includes(':')||path.split('/').some(p=>p==='..'||p==='.'||!p))return [];
  return /\.(md|apexenc)$/i.test(path)?[path]:[path+'.md',path+'.apexenc'];
 }
+
+export function weekStartYear(now:Date):number {
+ return new Date(now.getFullYear(),now.getMonth(),now.getDate()-now.getDay()).getFullYear();
+}

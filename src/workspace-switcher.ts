@@ -3,7 +3,7 @@ import type DashboardPlugin from './main';
 import { t } from './i18n';
 import { showPromptDialog } from './prompt-dialog';
 import { showConfirmDialog } from './confirm-dialog';
-import { normalizeWorkspacePath, weekStartMonthDay } from './workspace-registry';
+import { normalizeWorkspacePath, weekStartMonthDay, weekStartYear } from './workspace-registry';
 
 /** Display label for a workspace: its name, else the file path. */
 function workspaceLabel(name: string, path: string): string {
@@ -20,6 +20,7 @@ async function promptNewWorkspace(plugin: DashboardPlugin): Promise<void> {
 		const { month, day } = weekStartMonthDay(new Date());
 		const fallback = t('workspace.defaultWeeklyName', {
 			n: plugin.folderWorkspaceFiles().length + (plugin.secure?.workspaceFiles().filter(file => file.parent?.path === plugin.workspaceFolder()).length ?? 0) + 1,
+			year: weekStartYear(new Date()),
 			month,
 			day,
 		});

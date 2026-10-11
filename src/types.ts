@@ -403,6 +403,9 @@ export interface TrackerDataPoint {
 }
 
 export interface TaskItem {
+	/** Shared content identity and unique occurrence identity, scoped to a table. */
+	syncId?: string;
+	syncInstanceId?: string;
 	/** Vault-relative daily note path; retained when tasks move between cards. */
 	dailyNote?: string;
 	text: string;
@@ -542,6 +545,11 @@ export interface TickTickConfig {
  *  The display fields (pageSize/density/striped/rowNumbers) are view-layer
  *  preferences — the query result itself is unaffected by them. */
 export interface DataviewConfig {
+	/** Read-only historical weekly plans; ignores DQL query. */
+	weeklyHistory?: boolean;
+	readOnlyTasks?: boolean;
+	deduplicateLinkedTasks?: boolean;
+	openSource?: "note" | "workspace";
 	/** Raw DQL query, e.g. `TABLE file.name FROM "Books" WHERE rating >= 4 SORT file.name`. */
 	query: string;
 	/** Optional display title override (defaults to column name). */
@@ -593,6 +601,7 @@ export interface DashboardColumn {
 }
 
 export interface DashboardData {
+	weekStart?: string;
 	banner: BannerData;
 	quickActions: QuickAction[];
 	quickActionOrder?: string[];
@@ -601,6 +610,8 @@ export interface DashboardData {
 }
 
 export interface RenderCallbacks {
+	weeklyHistory?: import("./weekly-history-section").WeeklyHistoryContext;
+	onTaskUnlink?(cardId: string, taskPath: number[]): void;
 	onTableTodoInsert?(columnName: string, row: number, col: number): void;
 	onTaskDailyNoteChange?(cardId: string, taskPath: number[], notePath: string | undefined, expectedText: string): void;
 	getSectionLocked?(column: DashboardColumn): boolean;
@@ -613,7 +624,7 @@ export interface RenderCallbacks {
 	onTaskAdd(cardId: string, text: string, parentPath?: number[]): void;
 	onTaskDelete(cardId: string, taskPath: number[]): void;
 	onTaskReorder(cardId: string, fromPath: number[], toPath: number[], before: boolean): void;
-	onTaskMoveToCard(srcCardId: string, fromPath: number[], destCardId: string, destPath: number[], mode: 'before' | 'after' | 'nest'): void;
+	onTaskMoveToCard(srcCardId: string, fromPath: number[], destCardId: string, destPath: number[], mode: 'before' | 'after' | 'nest', copy?: boolean): void;
 	onTaskEdit(cardId: string, taskPath: number[], newText: string): void;
 	onCardAdd(columnName: string): void;
 	onColumnAdd(name: string, sectionType?: string): void;

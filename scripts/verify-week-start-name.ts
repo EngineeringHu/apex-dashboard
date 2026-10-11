@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { weekStartMonthDay } from '../src/workspace-registry';
+import { weekStartMonthDay, weekStartYear } from '../src/workspace-registry';
 import { setLanguage, t } from '../src/i18n';
 
 // The + button's default weekly-board name carries the Sunday that starts the
@@ -9,7 +9,7 @@ import { setLanguage, t } from '../src/i18n';
 function defaultName(fileCount: number, now: Date, lang: 'en' | 'zh'): string {
 	setLanguage(lang);
 	const { month, day } = weekStartMonthDay(now);
-	return t('workspace.defaultWeeklyName', { n: fileCount + 1, month, day });
+	return t('workspace.defaultWeeklyName', { n: fileCount + 1, year: weekStartYear(now), month, day });
 }
 
 async function main(): Promise<void> {
@@ -30,9 +30,10 @@ async function main(): Promise<void> {
 
 	// 5. Composed default name (the prompt dialog's pre-filled value):
 	//    zh formats M月D号, en formats M/D; n stays the file-count sequence.
-	assert.equal(defaultName(1, new Date(2026, 8, 18), 'zh'), '第2周-9月13号', '5: zh default name');
-	assert.equal(defaultName(1, new Date(2026, 8, 18), 'en'), 'Week 2 - 9/13', '5: en default name');
+	assert.equal(defaultName(1, new Date(2026, 8, 18), 'zh'), '2026年第2周-9月13号', '5: zh default name');
+	assert.equal(defaultName(1, new Date(2026, 8, 18), 'en'), '2026 Week 2 - 9/13', '5: en default name');
 
+	assert.equal(defaultName(1,new Date(2027,0,1),'zh'),'2026年第2周-12月27号');
 	console.log('verify-week-start-name: 5 scenarios OK');
 }
 

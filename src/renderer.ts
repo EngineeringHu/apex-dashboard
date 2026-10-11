@@ -2101,7 +2101,7 @@ export function renderSection(column: DashboardColumn, callbacks: RenderCallback
 		});
 
 		renderDataviewSection(el, column, app, activeHoverParent, callbacks.onOpenNoteInPopover ?? null, (fn) => { reload = fn; },
-			(cfg) => callbacks.onDataviewConfigChange(column.name, cfg));
+			(cfg) => callbacks.onDataviewConfigChange(column.name, cfg), callbacks.weeklyHistory);
 		return el;
 	}
 
@@ -2787,6 +2787,20 @@ function renderTaskItem(
 		textarea.addEventListener('blur', () => finish(true));
 	});
 
+	if (task.syncId && callbacks.onTaskUnlink) {
+		const linked = item.createEl('button', {
+			cls: 'dashboard-task-sync-link',
+			attr: { 'aria-label': t('task.unlinkSync'), title: t('task.linkedHint') },
+		});
+		setIcon(linked, 'link-2');
+		linked.addEventListener('click', e => {
+			e.stopPropagation();
+			const menu = new Menu();
+			menu.addItem(entry => entry.setTitle(t('task.unlinkSync')).setIcon('unlink')
+				.onClick(() => callbacks.onTaskUnlink!(card.id, path)));
+			menu.showAtMouseEvent(e);
+		});
+	}
 	if (callbacks.onTaskDailyNoteChange) {
 		const linkBtn = item.createEl('button', {
 			cls: 'dashboard-task-daily-link', attr: { 'aria-label': t('task.linkDaily'), title: t('task.linkDaily') },
@@ -2828,7 +2842,7 @@ function renderTaskItem(
 		taskDragSource = { cardId: card.id, taskPath: path, root: item.closest('.apex-dashboard-root'), table: item.closest('.dashboard-table-wrap') };
 		item.addClass('dashboard-task-item--dragging');
 		if (e.dataTransfer) {
-			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.effectAllowed = taskDragSource.table ? 'copyMove' : 'move';
 			e.dataTransfer.setData('text/plain', JSON.stringify(path));
 			// Marks this as an in-card item drag so the card-level file-drop
 			// layer (which would force dropEffect='link' and kill the drop)
@@ -2852,7 +2866,7 @@ function renderTaskItem(
 		const sameNode = taskDragSource.cardId === card.id &&
 			JSON.stringify(taskDragSource.taskPath) === JSON.stringify(path);
 		if (sameNode) return;
-		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		if (e.dataTransfer) e.dataTransfer.dropEffect = taskDragSource.table && taskDragSource.cardId !== card.id && e.ctrlKey ? 'copy' : 'move';
 		activeDocument.querySelectorAll(
 			'.dashboard-task-item--drag-top,.dashboard-task-item--drag-bottom,.dashboard-task-item--drag-nest'
 		).forEach(el => el.removeClass('dashboard-task-item--drag-top', 'dashboard-task-item--drag-bottom', 'dashboard-task-item--drag-nest'));
@@ -2886,7 +2900,7 @@ function renderTaskItem(
 			else callbacks.onTaskNestInto(card.id, src.taskPath, path);
 		} else {
 			const mode: 'before' | 'after' | 'nest' = ratio < 0.3 ? 'before' : ratio > 0.7 ? 'after' : 'nest';
-			callbacks.onTaskMoveToCard(src.cardId, src.taskPath, card.id, path, mode);
+			callbacks.onTaskMoveToCard(src.cardId, src.taskPath, card.id, path, mode, !!src.table && e.ctrlKey);
 		}
 	});
 
@@ -2929,7 +2943,7 @@ function renderTaskBody(container: HTMLElement, card: DashboardCard, callbacks: 
 		if (!taskDragSource || taskDragSource.root !== list.closest('.apex-dashboard-root') || taskDragSource.table !== list.closest('.dashboard-table-wrap')) return;
 		if (taskDragSource.cardId === card.id) return;
 		e.preventDefault();
-		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		if (e.dataTransfer) e.dataTransfer.dropEffect = taskDragSource.table && e.ctrlKey ? 'copy' : 'move';
 		list.addClass('dashboard-task-list--drop-target');
 	});
 
@@ -2945,7 +2959,7 @@ function renderTaskBody(container: HTMLElement, card: DashboardCard, callbacks: 
 		list.removeClass('dashboard-task-list--drop-target');
 		if (!taskDragSource || taskDragSource.root !== list.closest('.apex-dashboard-root') || taskDragSource.table !== list.closest('.dashboard-table-wrap')) return;
 		if (taskDragSource.cardId === card.id) return;
-		callbacks.onTaskMoveToCard(taskDragSource.cardId, taskDragSource.taskPath, card.id, [card.tasks.length], 'before');
+		callbacks.onTaskMoveToCard(taskDragSource.cardId, taskDragSource.taskPath, card.id, [card.tasks.length], 'before', !!taskDragSource.table && e.ctrlKey);
 	});
 
 	card.tasks.forEach((task, i) => renderTaskItem(list, task, [i], card, callbacks, app, 0));
@@ -4101,7 +4115,12 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 				else td.createDiv({ text: t('table.missingCard') });
 			} else if (isTaskCell && !cell.text.trim()) {
 				td.addClass('apex-table-cell--tasks');
-				const insert = td.createEl('button', { cls: 'apex-table-insert-todo', text: t('table.insertTodo') });
+				td.addClass('apex-table-cell--empty');
+                const insert = td.createEl('button', {
+                    cls: 'apex-table-insert-todo',
+                    attr: { type: 'button', 'aria-label': t('table.insertTodo'), title: t('table.insertTodo') },
+                });
+                setIcon(insert, 'plus');
 				insert.addEventListener('click', e => {
 					e.stopPropagation();
 					callbacks.onTableTodoInsert?.(column.name, r, cell.col);

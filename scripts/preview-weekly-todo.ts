@@ -34,12 +34,13 @@ export function showPreview(realApp: App) {
    this.engine.initMemory(data,async()=>{});
    const e = this.engine;
    const callbacks = {
+    onTaskUnlink:(id,path)=>e.unlinkTask(id,path),
     onTableTodoInsert:(name,row,col)=>e.insertTableTodo(name,row,col),
     onTaskAdd:(id,text,parent)=>e.addTask(id,text,parent),
     onTaskDelete:(id,path)=>e.deleteTask(id,path),
     onTaskEdit:(id,path,text)=>e.editTask(id,path,text),
     onCheckboxToggle:(id,path,checked)=>e.toggleTask(id,path,checked),
-    onTaskMoveToCard:(source,path,dest,destPath,mode)=>e.moveTaskToCard(source,path,dest,destPath,mode),
+    onTaskMoveToCard:(source,path,dest,destPath,mode,copy)=>e.moveTaskToCard(source,path,dest,destPath,mode,copy),
     onTaskReorder:(id,from,to,before)=>e.reorderTask(id,from,to,before),
     onTaskNestInto:(id,from,to)=>e.nestTaskInto(id,from,to),
     onTaskNest:(id,path)=>e.nestTask(id,path),

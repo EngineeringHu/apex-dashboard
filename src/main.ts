@@ -6,6 +6,7 @@ import { BackupService } from './backup-service';
 import { setLanguage, t } from './i18n';
 import { DataviewGuideModal } from './dataview-guide-modal';
 import { SecureController } from './secure/controller';
+import { stampWeeklyDate } from './weekly-history';
 
 /** Version of the CURRENT announcement content (DataviewGuideModal). The
  *  announcement pops only when the user's stored version differs from this —
@@ -281,6 +282,13 @@ export default class DashboardPlugin extends Plugin {
 		this.expenseService.destroy();
 	}
 
+ async openWeeklyWorkspace(file:TFile):Promise<void>{
+  await this.secure.mode.assertReady();
+  if(this.secure.mode.enabled||this.secure.session.active)throw Error('请先关闭周记加密');
+  if(!this.isFolderWorkspace(normalizeWorkspacePath(file.path)))throw Error('周记工作台已不存在');
+  await this.switchWorkspace(file.path);
+  await this.openDashboard();
+ }
 	private async openDashboard(): Promise<void> {
 		const existing = this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE);
 		if (existing.length > 0) {
@@ -519,7 +527,7 @@ export default class DashboardPlugin extends Plugin {
 			await this.secure.mode.assertReady();
 			if (folder === '周记' && this.secure.mode.enabled) throw Error('加密开关已变化，请重新新建');
 			const prepared = await this.secure.templates.plain(template, folder);
-			content = prepared.markdown; rollbackTemplateAssets = prepared.rollback;
+			content = folder === '周记' ? stampWeeklyDate(prepared.markdown, path.split('/').pop()!) : prepared.markdown; rollbackTemplateAssets = prepared.rollback;
 			verifyTemplate = () => this.secure.templates.assertCurrent(template);
 			// vault.create() needs every parent folder to exist.
 			if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {

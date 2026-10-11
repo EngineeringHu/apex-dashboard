@@ -22,6 +22,7 @@ import type {
 import { parse as parseYaml } from 'yaml';
 import { t } from './i18n';
 import { normalizeColumnPairs } from './column-pairs';
+import { normalizeDataviewConfig } from './weekly-history-config';
 
 const KNOWN_METADATA_KEYS = new Set(['id', 'link', 'progress', 'due', 'streak', 'type', 'color', 'cover', 'width', 'size', 'lat', 'lon', 'city', 'track', 'days', 'cols', 'rows', 'gcol', 'grow']);
 const SECTION_TYPES = new Set(['memo', 'todo', 'projects', 'notes', 'dashboard', 'library', 'folder', 'images', 'videos', 'alltasks', 'calendar', 'dataview', 'weread', 'ticktick', 'sticky', 'table']);
@@ -70,6 +71,7 @@ export function parse(markdown: string): DashboardData {
 	const columns = parseColumns(body, columnDefs);
 
 	const data: DashboardData = { banner, quickActions, columns };
+	if (typeof frontmatter.weekStart === "string") data.weekStart = frontmatter.weekStart;
 	if (quickActionOrder) data.quickActionOrder = quickActionOrder;
 	const hiddenPresets = parseHiddenPresets(frontmatter);
 	if (hiddenPresets) data.hiddenPresets = hiddenPresets;
@@ -89,6 +91,7 @@ export function serialize(data: DashboardData): string {
 
 	lines.push('---');
 	lines.push('dashboard: true');
+	if (data.weekStart) lines.push('weekStart: '+JSON.stringify(data.weekStart));
 
 	lines.push('banner:');
 	lines.push(`  quote: "${escapeYamlString(data.banner.quote)}"`);
@@ -285,8 +288,11 @@ export function serialize(data: DashboardData): string {
 			}
 		}
 		if (col.dataviewConfig) {
-			const dc = col.dataviewConfig;
+			const dc = normalizeDataviewConfig(col.dataviewConfig);
 			lines.push('    dataview:');
+			for (const key of ['readOnlyTasks','deduplicateLinkedTasks','openSource','viewMode','showSource','density','striped','rowNumbers','pageSize'] as const) {
+				if (dc[key] !== undefined) lines.push('      '+key+': '+JSON.stringify(dc[key]));
+			}
 			// JSON.stringify yields a valid double-quoted YAML scalar and safely
 			// escapes embedded newlines/quotes in the multi-line query.
 			lines.push(`      query: ${JSON.stringify(dc.query)}`);
@@ -399,6 +405,7 @@ export function serialize(data: DashboardData): string {
 					if (task.reminder) taskLine += ` ⏰ ${task.reminder}`;
 					if (task.collapsed) taskLine += ` <!--collapsed-->`;
 					if (task.dailyNote) taskLine += ` <!--apex-daily:${encodeURIComponent(task.dailyNote)}-->`;
+					if (task.syncId && task.syncInstanceId) taskLine += ' <!--apex-sync:' + task.syncId + ':' + task.syncInstanceId + '-->';
 					lines.push(taskLine);
 					for (const child of task.children ?? []) writeTask(child, indent + 1);
 				};
@@ -1088,11 +1095,20 @@ function parseTickTickConfig(raw: Record<string, unknown>): TickTickConfig {
 function parseDataviewConfig(raw: Record<string, unknown>): DataviewConfig {
 	const query = str(raw.query ?? '');
 	const title = raw.title ? str(raw.title) : undefined;
-	return {
+	return normalizeDataviewConfig({
 		query,
+		weeklyHistory: raw.weeklyHistory === true ? true : undefined,
+        readOnlyTasks: raw.readOnlyTasks === true,
+        deduplicateLinkedTasks: raw.deduplicateLinkedTasks === true,
+        openSource: raw.openSource === 'workspace' ? 'workspace' : 'note',
+        viewMode: raw.viewMode === 'table' || raw.viewMode === 'list' ? raw.viewMode : 'auto',
+        showSource: raw.showSource !== false,
+        density: raw.density === 'compact' ? 'compact' : 'normal',
+        striped: raw.striped === true, rowNumbers: raw.rowNumbers === true,
+        pageSize: typeof raw.pageSize === 'number' ? raw.pageSize : undefined,
 		title: title && title.length > 0 ? title : undefined,
 		excludeFolders: Array.isArray(raw.excludeFolders) ? raw.excludeFolders.map((v: unknown) => String(v)) : undefined,
-	};
+	});
 }
 
 function splitByH2(body: string): Array<{ heading: string; content: string }> {
@@ -1208,6 +1224,12 @@ function extractCardParts(body: string): {
 		const taskMatch = trimmed.match(/^- \[([ xX])\]\s*(.+)$/);
 		if (taskMatch && taskMatch[1] && taskMatch[2]) {
 			let taskText = taskMatch[2];
+			let syncId: string | undefined, syncInstanceId: string | undefined;
+			const syncMatch = taskText.match(/\s*<!--apex-sync:([a-zA-Z0-9-]+):([a-zA-Z0-9-]+)-->$/);
+			if (syncMatch) {
+				syncId = syncMatch[1]; syncInstanceId = syncMatch[2];
+				taskText = taskText.slice(0, syncMatch.index);
+			}
 			let dailyNote: string | undefined;
 			const dailyMatch = taskText.match(/\s*<!--apex-daily:([^\s]+)-->$/);
 			if (dailyMatch) {
@@ -1228,7 +1250,7 @@ function extractCardParts(body: string): {
 				taskText = taskText.replace(REMINDER_REGEX, '');
 				taskReminder = reminderMatch[1];
 			}
-			const node: TaskItem = { checked: taskMatch[1] !== ' ', text: taskText, reminder: taskReminder, collapsed: taskCollapsed, ...(dailyNote ? { dailyNote } : {}) };
+			const node: TaskItem = { checked: taskMatch[1] !== ' ', text: taskText, reminder: taskReminder, collapsed: taskCollapsed, ...(dailyNote ? { dailyNote } : {}), ...(syncId ? { syncId, syncInstanceId } : {}) };
 			while (taskStack.length && taskStack[taskStack.length - 1]!.indent >= taskIndent) taskStack.pop();
 			const parent = taskStack[taskStack.length - 1]?.task;
 			if (parent) parent.children = [...(parent.children ?? []), node];

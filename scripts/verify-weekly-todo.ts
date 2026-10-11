@@ -37,6 +37,32 @@ async function main() {
     engine.initMemory(reload, async data => { saved = parse(serialize(data)); });
     await engine.moveTaskToCard('card-src', [0], 'missing-card', [0], 'before');
     assert.equal(engine.getData()!.columns[tableIndex]!.cards[0]!.tasks.length, 2, 'invalid destination never loses task');
+    // Ctrl-copy into an empty card, before/after a task, and nested under a task.
+    for (const mode of ['before', 'after', 'nest'] as const) {
+        const copyEngine = new SyncEngine({} as any, DEFAULT_SETTINGS);
+        let persisted = reload;
+        copyEngine.initMemory(parse(serialize(reload)), async data => { persisted = parse(serialize(data)); });
+        await copyEngine.moveTaskToCard('card-src', [0], 'card-dest', [0], 'before', true);
+        const originalTask = copyEngine.getData()!.columns[tableIndex]!.cards[0]!.tasks[0]!;
+        const copiedTask = copyEngine.getData()!.columns[tableIndex]!.cards[1]!.tasks[0]!;
+        const content = (task: any): any => {
+            const { syncInstanceId, ...rest } = task;
+            return { ...rest, ...(task.children ? { children: task.children.map(content) } : {}) };
+        };
+        assert.deepEqual(content(copiedTask), content(originalTask), 'linked copy preserves shared content');
+        assert.notEqual(copiedTask.syncInstanceId, originalTask.syncInstanceId, 'each position has its own identity');
+        assert.notEqual(copiedTask, originalTask);
+        assert.notEqual(copiedTask.children![0], originalTask.children![0], 'subtasks are independent objects');
+        assert.equal(persisted.columns[tableIndex]!.cards[0]!.tasks.length, 2, 'source remains after save/reload');
+        await copyEngine.moveTaskToCard('card-src', [1], 'card-dest', [0], mode, true);
+        const dest = persisted.columns[tableIndex]!.cards[1]!.tasks;
+        assert.equal(mode === 'nest' ? dest[0]!.children!.at(-1)!.text : dest[mode === 'before' ? 0 : 1]!.text, 'B');
+        await copyEngine.editTask('card-dest', mode === 'before' ? [1, 0] : [0, 0], 'edited child');
+        assert.equal(copyEngine.getData()!.columns[tableIndex]!.cards[0]!.tasks[0]!.children![0]!.text, 'edited child', 'linked child edit synchronizes back to source');
+        const beforeInvalid = serialize(copyEngine.getData()!);
+        await copyEngine.moveTaskToCard('card-src', [0], 'missing', [0], 'before', true);
+        assert.equal(serialize(copyEngine.getData()!), beforeInvalid, 'invalid copy destination does not change data');
+    }
     await engine.moveTaskToCard('card-src', [0], 'card-dest', [0], 'before');
     assert.equal(saved.columns[tableIndex]!.cards[0]!.tasks.length, 1);
     const moved = saved.columns[tableIndex]!.cards[1]!.tasks[0]!;

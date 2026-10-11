@@ -4,7 +4,8 @@
  if(document.activeElement instanceof HTMLElement) document.activeElement.blur();
  const {MarkdownView}=require('obsidian');
  for(const leaf of app.workspace.getLeavesOfType('markdown')) if(leaf.view instanceof MarkdownView) await leaf.view.save();
- for(const leaf of app.workspace.getLeavesOfType('dashboard-view')) await leaf.view.sync?.flushPending?.();
+ const leaves=[]; app.workspace.iterateAllLeaves(leaf=>leaves.push(leaf));
+ for(const leaf of leaves) await leaf.view.sync?.flushPending?.();
  await plugin.secure.lockAll();
  const crypto=require('crypto');
  const hashes={};

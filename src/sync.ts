@@ -3,6 +3,7 @@ import type { DashboardSettings, DashboardCard, DashboardData, TaskItem, DocNode
 import { parse, serialize, generateDefaultMarkdown } from './parser';
 import { t } from './i18n';
 import { insertTableTodo } from './table-model';
+import { linkTaskTree, copyLinkedTaskTree, detachTaskTree, checkTaskTree, synchronizeLinkedTasks } from './linked-tasks';
 import { getTaskByPath } from './task-tree';
 import {
 	type TaskPath,
@@ -170,8 +171,9 @@ export class SyncEngine {
 		data: DashboardData,
 		cardId: string,
 		transform: (tasks: TaskItem[]) => TaskItem[],
+		synchronize = true,
 	): DashboardData {
-		return {
+		const proposed = {
 			...data,
 			columns: data.columns.map(col => ({
 				...col,
@@ -180,6 +182,15 @@ export class SyncEngine {
 				),
 			})),
 		};
+		return synchronize ? this.applyLinkedChanges(data, proposed) : proposed;
+	}
+
+	private applyLinkedChanges(before: DashboardData, proposed: DashboardData): DashboardData {
+		try { return synchronizeLinkedTasks(before, proposed); }
+		catch (error) {
+			if (!(error instanceof Error) || error.message !== 'linked-task-cycle') throw error;
+			new Notice(t('task.syncCycle')); return before;
+		}
 	}
 
 	private mapCardDocs(
@@ -200,6 +211,7 @@ export class SyncEngine {
 
 	async archiveTasks(columnName: string): Promise<void> {
 		if (!this.data) return;
+		const before = this.data;
 
 		this.data = {
 			...this.data,
@@ -214,6 +226,7 @@ export class SyncEngine {
 				};
 			}),
 		};
+		this.data = this.applyLinkedChanges(before, this.data);
 		await this.writeToDisk();
 	}
 
@@ -221,12 +234,7 @@ export class SyncEngine {
 		if (!this.data) return;
 
 		this.data = this.mapCardTasks(this.data, cardId, (tasks) => {
-			let next = updateTaskAt(tasks, taskPath, (t) => {
-				if (t.children && t.children.length > 0) {
-					return { ...t, checked, children: t.children.map(c => ({ ...c, checked })) };
-				}
-				return { ...t, checked };
-			});
+			let next = updateTaskAt(tasks, taskPath, (t) => checkTaskTree(t, checked));
 
 			for (let depth = taskPath.length - 1; depth > 0; depth--) {
 				next = updateTaskAt(next, taskPath.slice(0, depth), recalcChecked);
@@ -259,6 +267,7 @@ export class SyncEngine {
 		destCardId: string,
 		destPath: TaskPath,
 		mode: TaskDropMode,
+		copy = false,
 	): Promise<void> {
 		if (!this.data) return;
 
@@ -269,12 +278,19 @@ export class SyncEngine {
 		if ((sourceColumn.sectionType === 'table' || destColumn!.sectionType === 'table') && sourceColumn !== destColumn) return;
 		if (mode === 'nest' ? !getTaskByPath(destCard.tasks, destPath)
 			: destPath.length === 0 || (destPath.length > 1 && !getTaskByPath(destCard.tasks, destPath.slice(0, -1)))) return;
+		const before = this.data;
+		const linkedCopy = copy && sourceColumn.sectionType === 'table';
 		let movedTask: TaskItem | undefined;
 
 		const columnsWithout = this.data.columns.map(col => ({
 			...col,
 			cards: col.cards.map(card => {
 				if (card.id !== srcCardId) return card;
+				if (copy) {
+					const source = getTaskByPath(card.tasks, fromPath);
+					movedTask = source && (linkedCopy ? linkTaskTree(source) : source);
+					return linkedCopy && movedTask ? { ...card, tasks: updateTaskAt(card.tasks, fromPath, () => movedTask!) } : card;
+				}
 				const { removed, tasks } = removeTaskAt(card.tasks, fromPath);
 				movedTask = removed;
 				return { ...card, tasks };
@@ -286,7 +302,12 @@ export class SyncEngine {
 		// Preserve the moved task's entire subtree. Previously the children were
 		// stripped for 'before'/'after' drops, which silently deleted all sub-items
 		// when a parent task was moved to another card.
-		const node: TaskItem = { ...movedTask };
+		// Occurrences own their objects; linked edits synchronize explicitly, never via object aliasing.
+		const cloneTask = (task: TaskItem): TaskItem => ({
+			...task,
+			...(task.children ? { children: task.children.map(cloneTask) } : {}),
+		});
+		const node: TaskItem = linkedCopy ? copyLinkedTaskTree(movedTask) : copy ? cloneTask(movedTask) : { ...movedTask };
 
 		this.data = {
 			...this.data,
@@ -304,6 +325,20 @@ export class SyncEngine {
 				}),
 			})),
 		};
+		this.data = this.applyLinkedChanges(before, this.data);
+		await this.writeToDisk();
+	}
+
+	async unlinkTask(cardId: string, taskPath: TaskPath): Promise<void> {
+		if (!this.data) return;
+		const card = this.data.columns.flatMap(column => column.cards).find(card => card.id === cardId);
+		if (!card) return;
+		let root = taskPath;
+		for (let depth = 1; depth <= taskPath.length; depth++) {
+			const path = taskPath.slice(0, depth);
+			if (getTaskByPath(card.tasks, path)?.syncId) { root = path; break; }
+		}
+		this.data = this.mapCardTasks(this.data, cardId, tasks => updateTaskAt(tasks, root, detachTaskTree), false);
 		await this.writeToDisk();
 	}
 
@@ -372,7 +407,7 @@ export class SyncEngine {
 		if (!this.data) return;
 
 		this.data = this.mapCardTasks(this.data, cardId, (tasks) =>
-			updateTaskAt(tasks, taskPath, (t) => ({ ...t, collapsed: !t.collapsed })));
+			updateTaskAt(tasks, taskPath, (t) => ({ ...t, collapsed: !t.collapsed })), false);
 		this.scheduleDeferredWrite();
 	}
 

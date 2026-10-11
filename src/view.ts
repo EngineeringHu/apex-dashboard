@@ -1043,6 +1043,14 @@ export class DashboardView extends ItemView implements HoverParent {
 	private createCallbacks(): import('./types').RenderCallbacks {
 		const callbackData = this.sync.getData();
 		const callbacks: import('./types').RenderCallbacks = {
+			weeklyHistory: {
+				folder: this.plugin.workspaceFolder(),
+				currentPath: this.plugin.settings.dashboardFile.replace(/\.md$/i, '') + '.md',
+				templatePath: this.plugin.secure.templates.file()?.path,
+				unavailable: () => this.plugin.secure.mode.enabled || this.plugin.secure.mode.busy || !!this.plugin.secure.mode.pending || this.plugin.secure.session.active,
+				open: async file => { await this.sync.flushPending(); await this.plugin.openWeeklyWorkspace(file); },
+			},
+			onTaskUnlink: (id, path) => { void this.sync.unlinkTask(id, path); },
 			onTableTodoInsert: (name, row, col) => { void this.sync.insertTableTodo(name, row, col); },
 			onTaskDailyNoteChange: (id, path, note, expectedText) => {
 				const originalCard = callbackData?.columns.flatMap(column => column.cards).find(card => card.id === id);
@@ -1072,7 +1080,7 @@ export class DashboardView extends ItemView implements HoverParent {
 				void this.sync.deleteTask(cardId, taskPath);
 			},
 			onTaskReorder: (cardId: string, fromPath: number[], toPath: number[], before: boolean) => this.sync.reorderTask(cardId, fromPath, toPath, before),
-			onTaskMoveToCard: (srcCardId: string, fromPath: number[], destCardId: string, destPath: number[], mode: 'before' | 'after' | 'nest') => this.sync.moveTaskToCard(srcCardId, fromPath, destCardId, destPath, mode),
+			onTaskMoveToCard: (srcCardId: string, fromPath: number[], destCardId: string, destPath: number[], mode: 'before' | 'after' | 'nest', copy = false) => this.sync.moveTaskToCard(srcCardId, fromPath, destCardId, destPath, mode, copy),
 			onTaskEdit: (cardId: string, taskPath: number[], text: string) => this.sync.editTask(cardId, taskPath, text),
 			onTaskNest: (cardId: string, taskPath: number[]) => this.sync.nestTask(cardId, taskPath),
 			onTaskNestInto: (cardId: string, srcPath: number[], destPath: number[]) => this.sync.nestTaskInto(cardId, srcPath, destPath),

@@ -194,7 +194,6 @@ export function promoteToTopLevel(tasks: TaskItem[], path: TaskPath): TaskItem[]
 	const { removed, tasks: t1 } = removeTaskAt(tasks, path);
 	if (!removed) return tasks;
 	const clean: TaskItem = { ...removed };
-	delete clean.children;
 	return insertAt(t1, [], parentIdx + 1, clean);
 }
 
