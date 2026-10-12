@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, type DashboardSettings, type CountdownConfig } from '
 import { DashboardSettingTab } from './settings';
 import { DashboardView, DASHBOARD_VIEW_TYPE } from './view';
 import { BackupService } from './backup-service';
+import { pruneRollingBackups } from './rolling-backup-retention';
 import { setLanguage, t } from './i18n';
 import { DataviewGuideModal } from './dataview-guide-modal';
 import { SecureController } from './secure/controller';
@@ -91,6 +92,9 @@ export default class DashboardPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 			await this.loadSettings();
+			void pruneRollingBackups(this.app.vault.adapter).catch(error => {
+				console.warn('Dashboard rolling backup cleanup failed:', error);
+			});
 			this.tableLayouts = new TableLayoutStore(() => this.settings.tableLayouts!, () => this.saveSettings());
 			this.secure = new SecureController(this);
 			await this.secure.mode.load();

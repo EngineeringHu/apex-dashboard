@@ -29,6 +29,7 @@ import {
 } from './doc-tree';
 import { moveToOwnRow, moveBeside, unpartnerAt } from './column-pairs';
 import { workspaceBackupName } from './workspace-registry';
+import { ROLLING_BACKUP_DIR, pruneRollingBackups } from './rolling-backup-retention';
 
 import type { DashboardUpdateSource } from './render-update';
 
@@ -68,8 +69,6 @@ export class SyncEngine {
 	private writeQueue: Promise<void> = Promise.resolve();
 	private callbacks: DataCallback[] = [];
 	private eventRef: ReturnType<typeof this.app.vault.on> | null = null;
-	private static readonly BACKUP_DIR = '.dashboard-backup';
-	private static readonly MAX_BACKUPS = 5;
 
 	constructor(app: App, settings: DashboardSettings, private allowFileAccess?:(path:string,exists:boolean)=>boolean) {
 		this.app = app;
@@ -1156,27 +1155,18 @@ export class SyncEngine {
 	private async createBackup(currentContent: string): Promise<void> {
 		try {
 			const adapter = this.app.vault.adapter;
-			const dir = SyncEngine.BACKUP_DIR;
+			const dir = ROLLING_BACKUP_DIR;
 			if (!(await adapter.exists(dir))) {
 				await adapter.mkdir(dir);
 			}
 
-			// Keyed per workspace: each board keeps its own rolling copies and
-			// prunes only its own files (dot separator so 'dashboard.' never
-			// matches 'dashboard-2.<ts>.md').
+			// The dot separator distinguishes dashboard from dashboard-2.
 			const base = this.file?.basename ?? 'dashboard';
 			const ts = new Date().toISOString().replace(/[:.]/g, '-');
 			const backupPath = `${dir}/${workspaceBackupName(base, ts)}`;
 			await adapter.write(backupPath, currentContent);
 
-			// Prune old backups, keep only MAX_BACKUPS
-			const files = await adapter.list(dir);
-			const backups = files.files
-				.filter((f: string) => f.startsWith(dir + '/' + base + '.') && f.endsWith('.md'))
-				.sort();
-			while (backups.length > SyncEngine.MAX_BACKUPS) {
-				await adapter.remove(backups.shift()!);
-			}
+			await pruneRollingBackups(adapter);
 		} catch {
 			// Backup failure should never block the main write
 		}

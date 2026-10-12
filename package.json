@@ -20,6 +20,7 @@
     "test:countdown-picker": "esbuild scripts/verify-countdown-picker.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-countdown-picker.cjs --alias:obsidian=./scripts/obsidian-stub.ts --log-level=warning && node node_modules/.tmp/verify-countdown-picker.cjs",
     "test:gallery-placeholder": "esbuild scripts/verify-gallery-placeholder.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-gallery-placeholder.cjs --alias:obsidian=./scripts/obsidian-stub.ts --log-level=warning && node node_modules/.tmp/verify-gallery-placeholder.cjs",
     "test:week-start-name": "esbuild scripts/verify-week-start-name.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-week-start-name.cjs --log-level=warning && node node_modules/.tmp/verify-week-start-name.cjs",
+    "test:rolling-backup": "esbuild scripts/verify-rolling-backup.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/verify-rolling-backup.cjs --log-level=warning && node node_modules/.tmp/verify-rolling-backup.cjs",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.check.json --skipLibCheck",
     "pretest": "npm run build",

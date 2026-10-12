@@ -26,6 +26,8 @@ finally { Remove-Item -LiteralPath $deploy }
 
 部署四个插件运行文件，并更新库内独立解密/Git 检查工具；不会替换 data.json、密钥或周记。然后重载 Apex 插件。不能把 Linux node_modules 当成 Windows 开发依赖，Windows 上运行插件无需它。
 
+工作台覆盖保存前的 Markdown 副本放在笔记库根目录 `.dashboard-backup/`。插件启动和新增副本后会清理：每个文件名最多保留最近 2 份，整个目录最多保留 5 份；其他文件不受影响。设置页的“定时备份”位于插件目录 `backups/`，使用独立的开关和保留份数。
+
 - `src/secure/`：加密、统一密码、全局开关、转换恢复及原看板集成。
 - `tools/`：独立恢复与 Git 检查工具的源文件；发行文件生成在 `dist/tools/`。
 - `scripts/`：测试、诊断、部署脚本。应用内测试须使用 Windows node.exe 执行 obsidian-cli.cjs，设置 APEX_VAULT 为笔记库路径；报告输出到项目 test-output，不再写进笔记库。
