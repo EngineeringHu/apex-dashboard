@@ -9529,6 +9529,23 @@
 	background: var(--db-bg-card-hover);
 }
 
+/* Follow the checkbox directly, including subtasks and table cell cards.
+   Keep specificity low so drag/drop indicators can override the highlight. */
+.dashboard-task-item:where(:has(> .dashboard-task-checkbox:not(:checked))) {
+	background: color-mix(in srgb, #e5a126 16%, var(--db-bg-card));
+	border-color: color-mix(in srgb, #e5a126 55%, var(--db-border-card));
+	box-shadow: inset 3px 0 0 #e5a126;
+}
+
+.dashboard-task-item:where(:has(> .dashboard-task-checkbox:not(:checked))):hover:where(:not(.dashboard-task-item--drag-nest, .dashboard-task-item--drag-over)) {
+	background: color-mix(in srgb, #e5a126 24%, var(--db-bg-card-hover));
+}
+
+.dashboard-task-item:where(:has(> .dashboard-task-checkbox:not(:checked))) > .dashboard-task-text {
+	color: var(--db-text);
+	font-weight: 600;
+}
+
 .dashboard-task-item:hover .dashboard-task-delete {
 	opacity: 1;
 }
