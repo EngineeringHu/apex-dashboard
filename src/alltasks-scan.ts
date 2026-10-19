@@ -1,3 +1,5 @@
+import type { TaskDisposition } from './task-status';
+import { readTaskMetadataSuffix, type TaskType } from './task-metadata';
 import { App, TFile } from 'obsidian';
 import { parseTableSectionRows } from './table-model';
 import { normalizeExcludeFolders, isUnderExcludedFolder } from './exclude-folders';
@@ -12,6 +14,8 @@ export type TaskGroupBy = 'date' | 'priority' | 'none';
  * display it, bucket it, and write the toggle back to its exact source line.
  */
 export interface VaultTask {
+	taskStatus?: TaskDisposition;
+	taskType?: TaskType;
 	syncId?: string;
 	syncKey?: string;
 	dailyNote?: string;
@@ -84,7 +88,7 @@ const COMPLETION_EMOJI_REGEX = /\s*✅\s*(\d{4}-\d{2}-\d{2})/;
 /** Dataview-style priority inline field, anywhere in the text. */
 const PRIORITY_FIELD_REGEX = /\s*\[priority::\s*([^\]]+?)\s*\]/i;
 /** Any checkbox line, allowing leading indentation so subtasks are aggregated too. */
-const TASK_LINE_REGEX = /^(\s*)- \[([ xX])\]\s*(.+)$/;
+const TASK_LINE_REGEX = /^(\s*)- \[([ xX-])\]\s*(.+)$/;
 
 /** Normalize a raw `[priority:: ...]` value to a known level. */
 function normalizePriority(raw: string): Priority | undefined {
@@ -104,7 +108,14 @@ function hhmm(s: string | undefined): string | undefined {
  * Scan one markdown file's content for checkbox tasks. Returns an empty array
  * (never throws) so one bad file can't break the whole section.
  */
-export function scanFileTasks(file: TFile, content: string, includeTables=false): VaultTask[] {
+export interface TaskScanOptions {
+    includeTables?: boolean;
+    /** Historical queries include cancelled records; calendar/todo scans omit them. */
+    includeCancelled?: boolean;
+}
+export function scanFileTasks(file: TFile, content: string, options: TaskScanOptions | boolean = {}): VaultTask[] {
+    // Keep the legacy includeTables argument compatible with existing callers.
+    const { includeTables = false, includeCancelled = false } = typeof options === 'boolean' ? { includeTables: options } : options;
 	const lines = content.split('\n');
 	const out: VaultTask[] = [];
 	let section='',card='',sectionIndex=0,fence='';
@@ -119,13 +130,15 @@ export function scanFileTasks(file: TFile, content: string, includeTables=false)
         if(!m){
          if(includeTables&&raw.trim().startsWith('|')){
           const cells=parseTableSectionRows(raw)[0]??[];
-          const lines=cells.flatMap(cell=>cell.split(/<br\s*\/?>/i)).map(line=>line.trim()).filter(line=>/^(?:-\s*)?\[[ xX]\]\s+/.test(line)).map(line=>line.startsWith('-')?line:'- '+line);
-          for(const task of scanFileTasks(file,lines.join('\n')))out.push({...task,line:-1,originalLine:raw,section,card:'表格任务'});
+          const lines=cells.flatMap(cell=>cell.split(/<br\s*\/?>/i)).map(line=>line.trim()).filter(line=>/^(?:-\s*)?\[[ xX-]\]\s+/.test(line)).map(line=>line.startsWith('-')?line:'- '+line);
+          for(const task of scanFileTasks(file,lines.join('\n'),{includeCancelled}))out.push({...task,line:-1,originalLine:raw,section,card:'表格任务'});
          }
          continue;
         }
 		const [, , mark, rest] = m;
-		let text = rest ?? '';
+		if (mark === '-' && !includeCancelled) continue;
+		const typed = readTaskMetadataSuffix(rest ?? '');
+		let text = typed.text;
         const sync=text.match(/\s*<!--apex-sync:([a-zA-Z0-9-]+):([a-zA-Z0-9-]+)-->\s*$/);
         if(sync)text=text.slice(0,sync.index);
         const daily=text.match(/\s*<!--apex-daily:([^\s]+)-->\s*$/);
@@ -206,13 +219,15 @@ export function scanFileTasks(file: TFile, content: string, includeTables=false)
 		const endTime = hhmm(ef?.[1]);
 
 		out.push({
+			...(typed.taskType ? { taskType: typed.taskType } : {}),
+			...(mark === '-' ? { taskStatus: 'cancelled' as const } : mark === ' ' && typed.taskStatus ? { taskStatus: typed.taskStatus } : {}),
 			file,
             syncId:sync?.[1], syncKey:sync ? file.path+'\\n'+sectionIndex+'\\n'+sync[1] : undefined,
             dailyNote,section,card,
 			path: file.path,
 			line: i,
 			originalLine: raw,
-			checked: (mark ?? ' ') !== ' ',
+			checked: mark === 'x' || mark === 'X',
 			text: text.trim(),
 			reminder,
 			due,

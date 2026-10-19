@@ -1,4 +1,7 @@
 import type { TableLayouts, TableLayoutBinding, TableStructureChange } from './table-layout';
+import type { TaskStatus, TaskDisposition } from './task-status';
+import type { TaskType } from './task-metadata';
+import type { TaskStyleSettings } from './task-presentation';
 import type { Language } from './i18n';
 import type { CalendarTaskFilter } from './alltasks-scan';
 import type { TFile } from 'obsidian';
@@ -6,6 +9,8 @@ import type { TFile } from 'obsidian';
 export interface DashboardSettings {
 	/** Presentation only; never serialized into dashboard Markdown. */
 	tableLayouts?: TableLayouts;
+	/** Shared presentation preferences for weekly table task cards. */
+	tableTaskStyles?: TaskStyleSettings;
 	/** Path of the ACTIVE workspace file (no .md extension). */
 	dashboardFile: string;
 	/** All workspace board files in switcher order (button i+1). Paths follow
@@ -406,6 +411,9 @@ export interface TrackerDataPoint {
 }
 
 export interface TaskItem {
+	taskStatus?: TaskDisposition;
+	/** Missing on legacy tasks; displayed as planned. */
+	taskType?: TaskType;
 	/** Shared content identity and unique occurrence identity, scoped to a table. */
 	syncId?: string;
 	syncInstanceId?: string;
@@ -548,10 +556,11 @@ export interface TickTickConfig {
  *  The display fields (pageSize/density/striped/rowNumbers) are view-layer
  *  preferences — the query result itself is unaffected by them. */
 export interface DataviewConfig {
-	/** Read-only historical weekly plans; ignores DQL query. */
+	/** Legacy history preset; normalized to an editable DQL query. */
 	weeklyHistory?: boolean;
 	readOnlyTasks?: boolean;
 	deduplicateLinkedTasks?: boolean;
+	taskFilter?: import('./task-filter').TaskFilter;
 	openSource?: "note" | "workspace";
 	/** Raw DQL query, e.g. `TABLE file.name FROM "Books" WHERE rating >= 4 SORT file.name`. */
 	query: string;
@@ -662,6 +671,10 @@ export interface RenderCallbacks {
 	 *  duplicate names it disambiguates which same-named column is meant. */
 	onColumnRename(oldName: string, newName: string, columnIndex?: number): void;
 	onColumnDelete(columnName: string, columnIndex?: number): void;
+	getTaskStyles?(): TaskStyleSettings;
+	onTaskStyleSettings?(): void;
+	onTaskStatusChange?(cardId: string, path: number[], status: TaskStatus): void;
+	onTaskTypeChange?(cardId: string, path: number[], type: TaskType): void;
 	onTaskReminderEdit(cardId: string, taskPath: number[], reminder: string | undefined): void;
 	onTaskNest(cardId: string, taskPath: number[]): void;
 	onTaskNestInto(cardId: string, srcPath: number[], destPath: number[]): void;

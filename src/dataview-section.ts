@@ -1,3 +1,7 @@
+import { renderTaskFilters } from './task-filter-ui';
+import { renderTaskTypeControl } from './task-presentation-ui';
+import { TASK_STATUS_ICONS } from './task-status-ui';
+import { taskStatus } from './task-status';
 import { App, Platform, TFile, setIcon } from 'obsidian';
 import type { WeeklyHistoryContext } from './weekly-history-section';
 import { normalizeDataviewConfig } from './weekly-history-config';
@@ -49,7 +53,7 @@ export function renderDataviewSection(
 	dvHoverParent = hoverParent;
 	dvOpener = onOpenNote;
 
-	const config = normalizeDataviewConfig(column.dataviewConfig ?? { query: '' });
+	let config = normalizeDataviewConfig(column.dataviewConfig ?? { query: '' });
 	setDataviewApp(app);
 	const content = el.createDiv({ cls: 'dashboard-dataview-content' });
     const workspaceMode=config.openSource==='workspace';
@@ -86,7 +90,7 @@ export function renderDataviewSection(
 			const visiblePages = excluded.length > 0
 				? pages.filter(p => !isUnderExcludedFolder(p.file.path, excluded))
 				: pages;
-			const outcome = executeDql(config.query, visiblePages, {currentPage:pages.find(p=>p.file.path===context?.currentPath),deduplicateLinkedTasks:config.deduplicateLinkedTasks});
+			const outcome = executeDql(config.query, visiblePages, {currentPage:pages.find(p=>p.file.path===context?.currentPath),deduplicateLinkedTasks:config.deduplicateLinkedTasks,taskFilter:config.taskFilter});
 			// Drop the spinner before rendering the outcome — every render* below
 			// appends into `content`, so without this reset it would spin forever.
 			content.empty();
@@ -99,6 +103,12 @@ export function renderDataviewSection(
 				showEncryptedDiaryHint(content, app);
 				return;
 			}
+			if (outcome.result.queryType === 'TASK') renderTaskFilters(content, config.taskFilter, taskFilter => {
+                config = { ...config, taskFilter };
+                renderContexts.set(content,{config,open});
+                onConfigChange?.(config);
+                void render();
+            });
 			renderResult(content, outcome.result, app, () => { void render(); }, config, onConfigChange);
 			showEncryptedDiaryHint(content, app);
 		} catch (err) {
@@ -665,9 +675,11 @@ function renderTable(
 function renderTaskRow(host:HTMLElement,row:ResultRow,rerender?:()=>void):void{
  if(!row.task)return;
  host.addClass('dashboard-dataview-task-row');
+ host.dataset.taskStatus=taskStatus(row.task);
  renderTaskCell(host,row.task,appRef,()=>rerender?.());
- const label=host.createSpan({cls:'dashboard-dataview-task-text'+(row.task.checked?' is-done':'')});
+ const label=host.createSpan({cls:'dashboard-dataview-task-text'+(row.task.checked||row.task.taskStatus==='cancelled'?' is-done':'')});
  renderDvInline(label,row.task.text);
+ renderTaskTypeControl(host,row.task);
  if((row.task.copies??1)>1)host.createSpan({cls:'dashboard-dataview-task-copies',text:' · '+row.task.copies+' 处关联'});
  host.title=[row.task.section,row.task.card].filter(Boolean).join(' / ');
  attachRowOpen(host,row);
@@ -675,6 +687,13 @@ function renderTaskRow(host:HTMLElement,row:ResultRow,rerender?:()=>void):void{
  host.addEventListener('keydown',e=>{if(e.target===host&&(e.key==='Enter'||e.key===' ')){e.preventDefault();host.click();}});
 }
 function renderTaskCell(td: HTMLElement, task: NonNullable<ResultRow['task']>, app: App, onToggled: () => void): void {
+	const status = taskStatus(task);
+	if (sectionContext(td)?.config.readOnlyTasks || task.taskStatus || task.syncId || task.line < 0) {
+		const label = t('task.status.' + status);
+		const icon = td.createSpan({ cls: 'dashboard-dataview-task-status', attr: { title: label, 'aria-label': label, role: 'img', 'data-task-status': status } });
+		setIcon(icon, TASK_STATUS_ICONS[status]);
+		return;
+	}
 	const checkbox = td.createEl('input', { cls: 'dashboard-dataview-task-checkbox', attr: { type: 'checkbox' } });
 	checkbox.checked = task.checked;
 	if (task.line >= 0 && !sectionContext(td)?.config.readOnlyTasks && !task.syncId) {

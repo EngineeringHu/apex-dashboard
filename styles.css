@@ -9531,17 +9531,17 @@
 
 /* Follow the checkbox directly, including subtasks and table cell cards.
    Keep specificity low so drag/drop indicators can override the highlight. */
-.dashboard-task-item:where(:has(> .dashboard-task-checkbox:not(:checked))) {
+.dashboard-task-item:where(:not(.dashboard-task-item--styled):not([data-task-status="completed"], [data-task-status="cancelled"]):has(> .dashboard-task-checkbox:not(:checked))) {
 	background: color-mix(in srgb, #e5a126 16%, var(--db-bg-card));
 	border-color: color-mix(in srgb, #e5a126 55%, var(--db-border-card));
 	box-shadow: inset 3px 0 0 #e5a126;
 }
 
-.dashboard-task-item:where(:has(> .dashboard-task-checkbox:not(:checked))):hover:where(:not(.dashboard-task-item--drag-nest, .dashboard-task-item--drag-over)) {
+.dashboard-task-item:where(:not(.dashboard-task-item--styled):not([data-task-status="completed"], [data-task-status="cancelled"]):has(> .dashboard-task-checkbox:not(:checked))):hover:where(:not(.dashboard-task-item--drag-nest, .dashboard-task-item--drag-over)) {
 	background: color-mix(in srgb, #e5a126 24%, var(--db-bg-card-hover));
 }
 
-.dashboard-task-item:where(:has(> .dashboard-task-checkbox:not(:checked))) > .dashboard-task-text {
+.dashboard-task-item:where(:not(.dashboard-task-item--styled):not([data-task-status="completed"], [data-task-status="cancelled"]):has(> .dashboard-task-checkbox:not(:checked))) > .dashboard-task-text {
 	color: var(--db-text);
 	font-weight: 600;
 }
@@ -9549,6 +9549,71 @@
 .dashboard-task-item:hover .dashboard-task-delete {
 	opacity: 1;
 }
+
+/* Table task colors come from the presentation policy; drag indicators below
+   retain precedence. Completion removes the fill without hiding identity. */
+.dashboard-task-item:where(.dashboard-task-item--styled) {
+	background: var(--db-bg-card);
+	border-color: var(--db-border-card);
+	box-shadow: none;
+}
+.dashboard-task-item:where(.dashboard-task-item--colored) {
+	background: color-mix(in srgb, var(--task-fill) 18%, var(--db-bg-card));
+	border-color: color-mix(in srgb, var(--task-fill) 50%, var(--db-border-card));
+}
+.dashboard-task-item:where(.dashboard-task-item--colored):hover:where(:not(.dashboard-task-item--drag-nest, .dashboard-task-item--drag-over)) {
+	background: color-mix(in srgb, var(--task-fill) 26%, var(--db-bg-card-hover));
+}
+.dashboard-task-item:where(.dashboard-task-item--pending-accent) {
+	box-shadow: inset 3px 0 0 var(--task-pending);
+}
+.dashboard-task-item:where(.dashboard-task-item--pending-accent) > .dashboard-task-text {
+	color: var(--db-text);
+	font-weight: 600;
+}
+.dashboard-task-type {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 22px;
+	min-width: 22px;
+	height: 22px;
+	padding: 3px;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--db-text-muted);
+	border: 1px solid transparent;
+	box-shadow: none;
+}
+.dashboard-task-type svg { width: 14px; height: 14px; }
+.dashboard-task-item--type-color .dashboard-task-type {
+	color: color-mix(in srgb, var(--task-type-color) 75%, var(--db-text));
+	background: transparent;
+	border-color: transparent;
+}
+button.dashboard-task-type:hover,
+button.dashboard-task-type:focus-visible {
+	background: color-mix(in srgb, var(--task-type-color, var(--db-text-muted)) 14%, transparent);
+	color: var(--db-text);
+}
+button.dashboard-task-type:focus-visible { outline: 2px solid var(--db-accent); outline-offset: 1px; }
+@media (pointer: coarse) {
+	.dashboard-task-type { width: 32px; min-width: 32px; height: 32px; }
+}
+.dashboard-task-item--linked-color .dashboard-task-sync-link {
+	color: var(--db-text);
+	background: color-mix(in srgb, var(--task-linked-color) 25%, var(--db-bg-card));
+	border: 1px solid var(--task-linked-color);
+	opacity: 1;
+}
+.apex-table-task-style-toolbar { display: flex; justify-content: flex-end; padding: 4px 8px; }
+.apex-task-style-modal { width: min(680px, 95vw); }
+.apex-task-style-help { color: var(--text-muted); font-size: var(--font-ui-small); }
+.apex-task-style-preview.apex-dashboard-root { min-height: 0; height: auto; padding: 8px; overflow: visible; }
+.apex-task-style-preview .apex-table-todo-card { display: flex; flex-direction: column; gap: 6px; }
+.apex-task-style-preview .dashboard-task-item { cursor: default; }
+.apex-table-todo-card .dashboard-task-type { grid-column: 3; grid-row: 1; align-self: start; }
 
 .dashboard-task-item:active {
 	cursor: grabbing;
@@ -9612,6 +9677,27 @@
 	flex-shrink: 0;
 	transform: scale(1.0);
 }
+
+button.dashboard-task-status {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	min-width: 20px;
+	height: 20px;
+	padding: 1px;
+	border: 0;
+	border-radius: 4px;
+	box-shadow: none;
+	background: transparent;
+	color: var(--db-text-muted);
+}
+.dashboard-task-status svg { width: 16px; height: 16px; }
+button.dashboard-task-status:hover { background: var(--db-bg-card-hover); color: var(--db-text); }
+button.dashboard-task-status:focus-visible { outline: 2px solid var(--db-accent); outline-offset: 1px; }
+.dashboard-task-item[data-task-status="completed"] .dashboard-task-status { color: var(--db-checkbox); }
+.dashboard-task-item[data-task-status="deferred"] .dashboard-task-status { color: var(--task-pending, #e5a126); }
+.dashboard-task-item[data-task-status="cancelled"] { border-style: dashed; }
 
 .dashboard-task-toggle {
 	flex-shrink: 0;
@@ -19023,12 +19109,12 @@ body.is-mobile .dashboard-media-item .dashboard-media-tagbtn { opacity: 1; }
 .apex-table-todo-card .dashboard-card-actions { flex-wrap: wrap; opacity: .45; }
 .apex-table-todo-card:focus-within .dashboard-card-actions { opacity: 1; }
 .apex-table-todo-card .dashboard-card-body { overflow: visible; max-height: none; min-width: 0; padding: 6px; }
-.apex-table-todo-card .dashboard-task-item { display: grid; grid-template-columns: 14px minmax(0, 1fr); align-items: start; padding: 4px; }
+.apex-table-todo-card .dashboard-task-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; padding: 4px; }
 .apex-table-todo-card .dashboard-task-item--hidden { display: none; }
 .apex-table-todo-card .dashboard-task-checkbox { grid-column: 1; grid-row: 1; margin: 2px 0 0; }
 .apex-table-todo-card .dashboard-task-text { grid-column: 2; grid-row: 1; }
 .apex-table-todo-card .dashboard-task-toggle { grid-column: 1; grid-row: 2; align-self: center; }
-.apex-table-task-actions { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; gap: 2px; opacity: .5; }
+.apex-table-task-actions { grid-column: 2 / -1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 2px; opacity: .5; }
 .apex-table-task-actions > button { opacity: 1; width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 2px; }
 .apex-table-todo-card .dashboard-task-item:hover .apex-table-task-actions,
 .apex-table-todo-card .dashboard-task-item:focus-within .apex-table-task-actions { opacity: 1; }
@@ -19037,3 +19123,16 @@ body.is-mobile .dashboard-media-item .dashboard-media-tagbtn { opacity: 1; }
 .apex-table-todo-card .dashboard-task-text { white-space: normal; }
 .apex-table-section .dashboard-table-hint { margin-top: 8px; color: var(--text-muted); font-size: 11px; }
 .is-mobile .apex-table-layout-help, .is-mobile .apex-table-column-ruler { display: none; }
+
+/* Reusable task query filters: selections persist in the section config. */
+.dashboard-task-filters { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 8px 0 14px; }
+.dashboard-task-filters fieldset { display: flex; flex-wrap: wrap; gap: 8px 14px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.dashboard-task-filters legend { color: var(--text-muted); font-size: 12px; margin-bottom: 6px; padding: 0; }
+.dashboard-task-filter-option { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; }
+.dashboard-task-filter-option input { margin: 0; }
+.dashboard-task-filter-hint { flex-basis: 100%; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.dashboard-dataview-task-status { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; color: var(--text-muted); }
+.dashboard-dataview-task-status svg { width: 16px; height: 16px; }
+.dashboard-dataview-task-status[data-task-status="deferred"] { color: var(--color-orange); }
+.dashboard-dataview-task-row .dashboard-task-type { width: 20px; min-width: 20px; height: 20px; flex-shrink: 0; margin-left: 4px; }
+.dashboard-dataview-task-text.is-done { text-decoration: line-through; color: var(--text-muted); }

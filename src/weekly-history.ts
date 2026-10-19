@@ -1,5 +1,5 @@
 import { parseDocument } from 'yaml';
-import { weeklyHistoryConfig } from './weekly-history-config';
+import { normalizeDataviewConfig, weeklyHistoryConfig } from './weekly-history-config';
 import { parse } from './parser';
 import { buildMergedTableGrid, parseTableSectionRows, legacyTableTasks, tableCardId } from './table-model';
 import type { TaskItem } from './types';
@@ -50,8 +50,7 @@ export function addWeeklyHistory(markdown:string):string {
   const columns=doc.toJS()?.columns;
   if(!Array.isArray(columns))throw Error('看板分区配置无效');
   for(const column of columns)if(column.dataview?.weeklyHistory){
-   const {weeklyHistory,...config}=column.dataview;
-   column.dataview={...config,...weeklyHistoryConfig(),query:config.query?.trim()||weeklyHistoryConfig().query};
+   column.dataview=normalizeDataviewConfig({...column.dataview,query:column.dataview.query??''});
   }
   doc.set('columns',columns);
  });
@@ -92,7 +91,7 @@ export function unfinishedTasks(markdown:string):HistoryTask[] {
    const grid=buildMergedTableGrid(parseTableSectionRows(col.tableContent??''));
    for(const row of grid.slice(1)) for(const cell of row) {
     if(!cell || tableCardId(cell.text)) continue;
-    const checkedLines=cell.text.split(/<br\s*\/?>/i).filter(line=>/^\s*(?:-\s*)?\[[ xX]\]/.test(line));
+    const checkedLines=cell.text.split(/<br\s*\/?>/i).filter(line=>/^\s*(?:-\s*)?\[[ xX-]\]/.test(line));
     visit(legacyTableTasks(checkedLines.join('<br>')),'表格任务');
    }
   }

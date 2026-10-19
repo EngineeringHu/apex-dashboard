@@ -24,3 +24,12 @@ export function fixture(){
  };
  return {app,files,history,earlier,current,future,template,data,reads:()=>reads,writes:()=>writes};
 }
+
+/** Every status/type combination, including a cancelled legacy table cell. */
+export function taskFilterFixture() {
+ const f=fixture();
+ const lines=['pending','deferred','cancelled','completed'].flatMap(status=>['planned','temporary'].map(type=>
+  `- [${status==='completed'?'x':status==='cancelled'?'-':' '}] ${status}-${type} <!--apex-task-type:${type}-->${status==='deferred'?' <!--apex-task-status:deferred-->':''}`));
+ f.data.set(f.history.path,f.data.get(f.history.path)+'\n'+lines.join('\n')+'\n| old | - [-] Legacy cancelled <!--apex-task-type:temporary--> |\n');
+ return f;
+}

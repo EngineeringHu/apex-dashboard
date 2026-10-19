@@ -179,6 +179,8 @@ export interface ResultRow {
 
 /** A flattened checkbox task attached to a TASK query row. */
 export interface DqlTask {
+	readonly taskStatus?: import('../task-status').TaskDisposition;
+	readonly taskType?: import('../task-metadata').TaskType;
 	readonly syncId?: string;
 	readonly syncKey?: string;
 	readonly section?: string;

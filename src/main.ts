@@ -1,3 +1,5 @@
+import { sanitizeTaskStyles } from './task-presentation';
+import { TaskStyleModal, refreshTableTaskStyles } from './task-presentation-ui';
 import { TableLayoutStore, sanitizeTableLayouts } from './table-layout';
 import { Notice, Plugin, TAbstractFile, TFile, TFolder, WorkspaceLeaf } from 'obsidian';
 import { DEFAULT_SETTINGS, type DashboardSettings, type CountdownConfig } from './types';
@@ -332,6 +334,7 @@ export default class DashboardPlugin extends Plugin {
 			...DEFAULT_SETTINGS,
 			...raw,
 			tableLayouts: sanitizeTableLayouts(raw.tableLayouts),
+			tableTaskStyles: sanitizeTaskStyles(raw.tableTaskStyles),
 			countdowns,
 			mediaTags,
 			workspaceFiles: workspace.files,
@@ -354,6 +357,17 @@ export default class DashboardPlugin extends Plugin {
 		const run = this.settingsSaveQueue.catch(() => {}).then(() => this.saveData(this.settings));
 		this.settingsSaveQueue = run;
 		await run;
+	}
+
+	openTaskStyleSettings(): void {
+		new TaskStyleModal(this.app, sanitizeTaskStyles(this.settings.tableTaskStyles), async styles => {
+			const previous = this.settings.tableTaskStyles;
+			this.settings.tableTaskStyles = styles;
+			try { await this.saveSettings(); }
+			catch (error) { this.settings.tableTaskStyles = previous; throw error; }
+			// Includes protected views and pop-out windows without reloading note data.
+			this.app.workspace.iterateAllLeaves(leaf => refreshTableTaskStyles(leaf.view.containerEl, styles));
+		}).open();
 	}
 
 	refreshAllDashboards(): void {

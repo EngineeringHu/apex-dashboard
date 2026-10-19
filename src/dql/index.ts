@@ -83,7 +83,7 @@ export type ExecuteOutcome =
 	| { readonly ok: true; readonly empty: true }
 	| { readonly ok: false; readonly error: DqlError };
 
-export function executeDql(dql: string, pages: readonly Page[], options: {currentPage?:Page; deduplicateLinkedTasks?:boolean} = {}): ExecuteOutcome {
+export function executeDql(dql: string, pages: readonly Page[], options: {currentPage?:Page; deduplicateLinkedTasks?:boolean; taskFilter?:import('../task-filter').TaskFilter} = {}): ExecuteOutcome {
 	const trimmed = dql.trim();
 	if (trimmed.length === 0) return { ok: true, empty: true };
 
@@ -101,7 +101,7 @@ export function executeDql(dql: string, pages: readonly Page[], options: {curren
         for(const [key,value] of Object.entries(current))if(key.startsWith('file.'))file[key.slice(5)]=value;
         const self=makeObject({...current,file:makeObject(file)});
         const contextPages=pages.map(page=>({...page,fields:{...page.fields,this:self}}));
-		const result = runQuery(parsed.value, contextPages, options.deduplicateLinkedTasks);
+		const result = runQuery(parsed.value, contextPages, options.deduplicateLinkedTasks, options.taskFilter);
 		return { ok: true, empty: false, result };
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);

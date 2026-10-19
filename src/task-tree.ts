@@ -1,3 +1,4 @@
+import { recalcTaskStatus, taskMark, taskStatus } from './task-status';
 import type { TaskItem } from './types';
 
 export type TaskPath = number[];
@@ -198,10 +199,7 @@ export function promoteToTopLevel(tasks: TaskItem[], path: TaskPath): TaskItem[]
 }
 
 export function recalcChecked(task: TaskItem): TaskItem {
-	const kids = task.children ?? [];
-	if (kids.length === 0) return task;
-	const allChecked = kids.every((k) => k.checked);
-	return { ...task, checked: allChecked };
+	return recalcTaskStatus(task);
 }
 
 /**
@@ -221,6 +219,7 @@ export function archiveCompleted(tasks: TaskItem[]): { archived: TaskItem[]; rem
 	const remaining: TaskItem[] = [];
 
 	for (const task of tasks) {
+		if (taskStatus(task) === 'cancelled') { remaining.push(task); continue; }
 		if (task.checked) {
 			archived.push(task);
 			continue;
@@ -252,8 +251,9 @@ export function serializeTasksForNote(tasks: TaskItem[]): string {
 
 	const write = (task: TaskItem, indent: number) => {
 		const prefix = indent > 0 ? '    '.repeat(indent) : '';
-		let line = `${prefix}- [${task.checked ? 'x' : ' '}] ${task.text}`;
+		let line = `${prefix}- [${taskMark(task)}] ${task.text}`;
 		if (task.reminder) line += ` ⏰ ${task.reminder}`;
+		if (!task.checked && task.taskStatus === 'deferred') line += ' <!--apex-task-status:deferred-->';
 		lines.push(line);
 		for (const child of task.children ?? []) write(child, indent + 1);
 	};

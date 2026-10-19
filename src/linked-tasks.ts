@@ -1,3 +1,4 @@
+import { recalcTaskStatus } from './task-status';
 import type { DashboardColumn, DashboardData, TaskItem } from './types';
 
 const freshId = () => globalThis.crypto.randomUUID();
@@ -16,9 +17,6 @@ export function detachTaskTree(task: TaskItem): TaskItem {
     const { syncId: _group, syncInstanceId: _instance, ...independent } = task;
     return { ...independent, ...(task.children ? { children: task.children.map(detachTaskTree) } : {}) };
 }
-export function checkTaskTree(task: TaskItem, checked: boolean): TaskItem {
-    return { ...task, checked, ...(task.children ? { children: task.children.map(child => checkTaskTree(child, checked)) } : {}) };
-}
 function visit(tasks: TaskItem[], fn: (task: TaskItem) => void): void {
     for (const task of tasks) { fn(task); visit(task.children ?? [], fn); }
 }
@@ -29,7 +27,7 @@ function instances(column: DashboardColumn): Map<string, TaskItem> {
     });
     return result;
 }
-const fields = ['text', 'checked', 'reminder', 'dailyNote'] as const;
+const fields = ['text', 'checked', 'reminder', 'dailyNote', 'taskType', 'taskStatus'] as const;
 type PayloadPatch = Partial<Pick<TaskItem, typeof fields[number]>>;
 const childOrder = (task: TaskItem) => (task.children ?? []).map(child => child.syncId ?? '').join(',');
 
@@ -94,10 +92,10 @@ function synchronizeColumn(before: DashboardColumn, proposed: DashboardColumn): 
                 result = { ...result, children };
                 const old = (task.syncInstanceId && previous.get(task.syncInstanceId)) || task;
                 const changed = childOrder(result) !== childOrder(old)
-                    || children.some((child, index) => child.checked !== old.children?.[index]?.checked);
+                    || children.some((child, index) => child.checked !== old.children?.[index]?.checked || child.taskStatus !== old.children?.[index]?.taskStatus);
                 if (changed && children.length) {
-                    result = { ...result, checked: children.every(child => child.checked) };
-                    if (result.syncId) payloads.set(result.syncId, { ...payloads.get(result.syncId), checked: result.checked });
+                    result = recalcTaskStatus(result);
+                    if (result.syncId) payloads.set(result.syncId, { ...payloads.get(result.syncId), checked: result.checked, taskStatus: result.taskStatus });
                 }
             }
             return result;

@@ -1,3 +1,4 @@
+import { taskIsOpen } from './task-status';
 import { disposeTableLayouts } from './table-layout-ui';
 import type { DashboardColumn } from './types';
 import { Events, HoverParent, HoverPopover, ItemView, MarkdownView, Modal, Notice, Platform, setIcon, WorkspaceLeaf, TFile } from 'obsidian';
@@ -1079,6 +1080,20 @@ export class DashboardView extends ItemView implements HoverParent {
 				templatePath: this.plugin.secure.templates.file()?.path,
 				unavailable: () => this.plugin.secure.mode.enabled || this.plugin.secure.mode.busy || !!this.plugin.secure.mode.pending || this.plugin.secure.session.active,
 				open: async file => { await this.sync.flushPending(); await this.plugin.openWeeklyWorkspace(file); },
+			},
+			getTaskStyles: () => this.plugin.settings.tableTaskStyles!,
+			onTaskStyleSettings: () => this.plugin.openTaskStyleSettings(),
+			onTaskStatusChange: (id, path, status) => {
+				const originalCard = callbackData?.columns.flatMap(column => column.cards).find(card => card.id === id);
+				const currentCard = this.sync.getData()?.columns.flatMap(column => column.cards).find(card => card.id === id);
+				if (!originalCard || originalCard !== currentCard) { new Notice(t('task.changed')); return; }
+				void this.sync.setTaskStatus(id, path, status);
+			},
+			onTaskTypeChange: (id, path, type) => {
+				const originalCard = callbackData?.columns.flatMap(column => column.cards).find(card => card.id === id);
+				const currentCard = this.sync.getData()?.columns.flatMap(column => column.cards).find(card => card.id === id);
+				if (!originalCard || originalCard !== currentCard) { new Notice(t('task.changed')); return; }
+				void this.sync.setTaskType(id, path, type);
 			},
 			onTaskUnlink: (id, path) => { void this.sync.unlinkTask(id, path); },
 			onTableTodoInsert: (name, row, col) => { void this.sync.insertTableTodo(name, row, col); },
@@ -2265,7 +2280,7 @@ export class DashboardView extends ItemView implements HoverParent {
 			for (const card of col.cards) {
 				for (let i = 0; i < card.tasks.length; i++) {
 					const task = card.tasks[i]!;
-					if (!task.reminder || task.checked) continue;
+					if (!task.reminder || !taskIsOpen(task)) continue;
 
 					const key = `${card.id}-${JSON.stringify([i])}`;
 					if (this.firedReminders.has(key)) continue;

@@ -4,6 +4,7 @@ import {
 	asList, coerceString, kindOf, makeDate, makeLink, makeObject,
 } from './values';
 import { parseDate } from './functions';
+import { taskType } from '../task-metadata';
 import { scanFileTasks } from '../alltasks-scan';
 import { isUnderExcludedFolder, normalizeExcludeFolders } from '../exclude-folders';
 
@@ -183,12 +184,14 @@ function tagToLink(tag: string): DqlValue {
 
 function collectTasks(file: TFile, body: string): DqlValue[] {
 	if (!body) return [];
-	const scanned = scanFileTasks(file, body, true);
+	const scanned = scanFileTasks(file, body, {includeTables:true,includeCancelled:true});
 	return scanned.map(t => {
 		// Each task is a queryable object: `completed`, `text`, `due`, plus the
 		// interactive payload the renderer needs to toggle it back to disk.
 		const entries: Record<string, DqlValue> = {
 			completed: t.checked,
+			status: t.checked ? 'completed' : t.taskStatus ?? 'pending',
+			taskType: taskType(t.taskType),
 			checked: t.checked,
 			text: t.text,
             syncId:t.syncId??null, syncKey:t.syncKey??null, dailyNote:t.dailyNote??null, section:t.section??null, card:t.card??null,

@@ -12,7 +12,7 @@ function fixture() {
     let table = data.columns.find(c => c.sectionType === 'table')!;
     for (const [index,id] of ['a','b','c'].entries()) table = insertTableTodo(table, 2, index + 4, id, id);
     table.cards[0]!.tasks = [{
-        text: 'parent', checked: false, collapsed: true, reminder: '2026-10-10 18:00', dailyNote: '日记/2026-10-10.md',
+        text: 'parent', checked: false, taskType: 'temporary', collapsed: true, reminder: '2026-10-10 18:00', dailyNote: '日记/2026-10-10.md',
         children: [
             { text: 'first', checked: false, children: [{ text: 'grandchild', checked: false }] },
             { text: 'second', checked: false },
@@ -159,6 +159,8 @@ async function main() {
         const root = await cryptoFormat.resolveRoot(password, envelope);
         const opened = await cryptoFormat.openAll(envelope, root);
         const restored = setup(parse(opened.markdown));
+        assert.equal(restored.tasks('a')[0]!.taskType, 'temporary', 'task type survives encryption');
+        assert.equal(restored.tasks('b')[0]!.taskType, 'temporary', 'linked type survives encryption');
         await restored.e.editTask('b', [0,0], 'edited after decrypt');
         assert.equal(restored.tasks('a')[0]!.children![0]!.text, 'edited after decrypt');
     }

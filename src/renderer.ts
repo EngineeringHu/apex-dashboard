@@ -1,3 +1,7 @@
+import { renderTaskStatusControl } from './task-status-ui';
+import { taskStatus, taskIsOpen, taskListCompletion } from './task-status';
+import { applyTableTaskStyle, renderTaskTypeControl } from './task-presentation-ui';
+import { sanitizeTaskStyles } from './task-presentation';
 import { attachTableLayout, disposeTableLayouts } from './table-layout-ui';
 import { reconcileTableLayout, tableColumnDefaults, tableHeaderRowCount, type TableStructureChange } from './table-layout';
 import { type TableSectionCell, parseTableSectionRows, buildMergedTableGrid, serializeMergedGrid, gridToDenseRows, serializeDenseRows, addTableRowAt, deleteTableRowAt, insertTableColumnAt, deleteTableColumnAt, tableCardId, tableCardMarker } from './table-model';
@@ -2735,17 +2739,23 @@ function renderTaskItem(
 		});
 	}
 
-	const checkbox = item.createEl('input', {
-		cls: 'dashboard-task-checkbox',
-		attr: { type: 'checkbox' },
-	});
-	checkbox.checked = task.checked;
-	checkbox.addEventListener('change', () => {
-		callbacks.onCheckboxToggle(card.id, path, checkbox.checked);
-	});
+	const status = taskStatus(task);
+	item.dataset.taskStatus = status;
+	if (callbacks.onTaskStatusChange) {
+		renderTaskStatusControl(item, task, next => callbacks.onTaskStatusChange!(card.id, path, next));
+	} else {
+		const checkbox = item.createEl('input', {
+			cls: 'dashboard-task-checkbox', attr: { type: 'checkbox' },
+		});
+		checkbox.checked = task.checked;
+		checkbox.addEventListener('change', () => {
+			item.dataset.taskStatus = checkbox.checked ? 'completed' : 'pending';
+			callbacks.onCheckboxToggle(card.id, path, checkbox.checked);
+		});
+	}
 
 	const label = item.createSpan({
-		cls: task.checked ? 'dashboard-task-text dashboard-task-text--done' : 'dashboard-task-text',
+		cls: 'dashboard-task-text' + (status === 'completed' || status === 'cancelled' ? ' dashboard-task-text--done' : ''),
 	});
 	renderTextWithLinks(label, task.text, app);
 	label.addEventListener('dblclick', (e) => {
@@ -2793,6 +2803,8 @@ function renderTaskItem(
 		textarea.addEventListener('blur', () => finish(true));
 	});
 
+	renderTaskTypeControl(item, task, callbacks.onTaskTypeChange
+		? type => callbacks.onTaskTypeChange!(card.id, path, type) : undefined);
 	if (task.syncId && callbacks.onTaskUnlink) {
 		const linked = item.createEl('button', {
 			cls: 'dashboard-task-sync-link',
@@ -2930,18 +2942,6 @@ function renderTaskItem(
 	}
 }
 
-/**
- * Completion of a single task as a 0..1 fraction: a leaf is 0 or 1 by its
- * checkbox; a task with subtasks takes the average of its subtasks'
- * completion (recursively). Card progress is the average over top-level
- * tasks: 1 done task + 1 task with 2/5 subtasks done = (1 + 0.4) / 2 = 70%.
- */
-function taskCompletion(task: TaskItem): number {
-	if (!task.children || task.children.length === 0) return task.checked ? 1 : 0;
-	const sum = task.children.reduce((acc, child) => acc + taskCompletion(child), 0);
-	return sum / task.children.length;
-}
-
 function renderTaskBody(container: HTMLElement, card: DashboardCard, callbacks: RenderCallbacks, app: App): void {
 	const list = container.createDiv({ cls: 'dashboard-task-list' });
 	list.dataset.cardId = card.id;
@@ -2987,8 +2987,7 @@ function renderTaskBody(container: HTMLElement, card: DashboardCard, callbacks: 
 	});
 
 	if (card.tasks.length > 0) {
-		const sum = card.tasks.reduce((acc, task) => acc + taskCompletion(task), 0);
-		const percent = Math.round((sum / card.tasks.length) * 100);
+		const percent = Math.round(taskListCompletion(card.tasks) * 100);
 
 		const progressWrap = container.createDiv({ cls: 'dashboard-progress' });
 		const bar = progressWrap.createDiv({ cls: 'dashboard-progress-bar' });
@@ -3443,7 +3442,7 @@ function createReminderButton(
 		btn.addClass('dashboard-task-reminder-btn--active');
 		setIcon(btn, 'bell-ring');
 		btn.setAttribute('aria-label', t('reminder.editReminder'));
-		if (!task.checked && isReminderOverdue(task.reminder)) {
+		if (taskIsOpen(task) && isReminderOverdue(task.reminder)) {
 			btn.addClass('dashboard-task-reminder-btn--overdue');
 		}
 	} else {
@@ -4112,7 +4111,10 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 		// In a narrow table column, reserve the first line for task text. Hidden
 		// flex buttons otherwise keep their width and squeeze Chinese into a column.
 		cardEl.querySelectorAll<HTMLElement>('.dashboard-task-item').forEach(item => {
-			const buttons = Array.from(item.querySelectorAll<HTMLButtonElement>(':scope > button'));
+			applyTableTaskStyle(item, sanitizeTaskStyles(callbacks.getTaskStyles?.()));
+			item.querySelector('.dashboard-task-checkbox')?.addEventListener('change', () =>
+				applyTableTaskStyle(item, sanitizeTaskStyles(callbacks.getTaskStyles?.())));
+			const buttons = Array.from(item.querySelectorAll<HTMLButtonElement>(':scope > button:not(.dashboard-task-type):not(.dashboard-task-checkbox)'));
 			if (!buttons.length) return;
 			const actions = item.createDiv({ cls: 'apex-table-task-actions' });
 			buttons.forEach(button => actions.appendChild(button));
@@ -4273,6 +4275,12 @@ export function renderTableSection(el: HTMLElement, column: DashboardColumn, cal
 		const retained = wrap.createDiv({ cls: 'apex-table-unplaced' });
 		retained.createDiv({ text: t('table.unplaced') });
 		for (const card of unplaced) renderEmbedded(retained, card);
+	}
+	if (callbacks.onTaskStyleSettings) {
+		const styles = el.createDiv({ cls: 'apex-table-task-style-toolbar' });
+		styles.createEl('button', { text: t('taskStyle.title'), attr: { type: 'button' } })
+			.addEventListener('click', () => callbacks.onTaskStyleSettings!());
+		el.insertBefore(styles, wrap);
 	}
 	wrap.createDiv({ cls: 'dashboard-table-hint', text: t('table.hint') });
 	attachTableLayout(el, wrap, table, column.tableContent ?? '', callbacks.getTableLayout?.(column) ?? {

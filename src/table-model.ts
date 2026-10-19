@@ -1,3 +1,4 @@
+import { readTaskMetadataSuffix } from './task-metadata';
 import type { DashboardCard, DashboardColumn, TaskItem } from './types';
 
 function splitTableCells(inner: string): string[] {
@@ -26,8 +27,10 @@ export function tableCardMarker(id: string): string {
 }
 export function legacyTableTasks(text: string): TaskItem[] {
     return text.replace(TABLE_CARD_PATTERN, '').split(/<br\s*\/?>/i).map(line => line.trim()).filter(Boolean).map(line => {
-        const match = line.match(/^(?:-\s*)?\[([ xX])\]\s*(.*)$/);
-        return { text: match ? match[2]! : line, checked: !!match && match[1]!.toLowerCase() === 'x' };
+        const match = line.match(/^(?:-\s*)?\[([ xX-])\]\s*(.*)$/);
+        const typed = readTaskMetadataSuffix(match ? match[2]! : line);
+        const checked = !!match && match[1]!.toLowerCase() === 'x';
+        return { ...typed, checked, taskStatus: match?.[1] === '-' ? 'cancelled' : checked ? undefined : typed.taskStatus };
     });
 }
 export function insertTableTodo(column: DashboardColumn, row: number, col: number, id: string, title: string): DashboardColumn {

@@ -1,3 +1,5 @@
+import { matchesTaskFilter } from '../task-filter';
+import { taskType } from '../task-metadata';
 import type {
 	BinOp, DataCommand, DqlError, Expression, FromClause, Page, Query, QueryResult,
 	ResultRow,
@@ -218,7 +220,7 @@ function evaluateCall(node: Extract<Expression, { type: 'call' }>, ctx: EvalCont
 /* ----------------------------- query runner ----------------------------- */
 
 /** Run a parsed query against the indexed pages. */
-export function runQuery(query: Query, pages: readonly Page[], deduplicateLinkedTasks = false): QueryResult {
+export function runQuery(query: Query, pages: readonly Page[], deduplicateLinkedTasks = false, taskFilter?: import('../task-filter').TaskFilter): QueryResult {
 	// 1. FROM: source resolution narrows the candidate pages.
 	let rows = applyFrom(query.from, pages);
 
@@ -227,7 +229,7 @@ export function runQuery(query: Query, pages: readonly Page[], deduplicateLinked
 	//     / `completed` are directly addressable. Task fields also surface as
 	//     row locals for unqualified access.
 	if (query.queryType === 'TASK') {
-		rows = flattenTaskRows(rows);
+		rows = flattenTaskRows(rows).filter(row => !row.task || matchesTaskFilter(row.task, taskFilter));
 
 	}
 
@@ -282,7 +284,7 @@ function toDqlTask(fields: Record<string, import('./types').DqlValue>): import('
 	const path = typeof fields['__path'] === 'string' ? fields['__path'] : '';
 	const line = typeof fields['__line'] === 'number' ? fields['__line'] : -1;
 	const original = typeof fields['__original'] === 'string' ? fields['__original'] : '';
-	return { text, checked, path, line, originalLine: original, syncId:typeof fields.syncId==='string'?fields.syncId:undefined, syncKey:typeof fields.syncKey==='string'?fields.syncKey:undefined, section:typeof fields.section==='string'?fields.section:undefined, card:typeof fields.card==='string'?fields.card:undefined };
+	return { text, checked, path, line, originalLine: original, taskType: taskType(fields.taskType), taskStatus: !checked && (fields.status === 'cancelled' || fields.status === 'deferred') ? fields.status : undefined, syncId:typeof fields.syncId==='string'?fields.syncId:undefined, syncKey:typeof fields.syncKey==='string'?fields.syncKey:undefined, section:typeof fields.section==='string'?fields.section:undefined, card:typeof fields.card==='string'?fields.card:undefined };
 }
 
 interface Row {

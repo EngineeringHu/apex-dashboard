@@ -1,3 +1,4 @@
+import { renderTaskFilters } from './task-filter-ui';
 import { App, Modal } from 'obsidian';
 import type { DataviewConfig } from './types';
 import { t } from './i18n';
@@ -89,6 +90,8 @@ export class DataviewConfigModal extends Modal {
         select.createEl('option',{value:'workspace',text:'Apex 工作台'});
         select.value=this.config.openSource??'note';
         select.addEventListener('change',()=>{this.config={...this.config,openSource:select.value==='workspace'?'workspace':'note'};});
+
+		renderTaskFilters(body, this.config.taskFilter, taskFilter => { this.config = { ...this.config, taskFilter }; });
 
 		// Sample query chips (inserted into the textarea on click).
 		const sampleSection = body.createDiv({ cls: 'dashboard-library-config-section' });

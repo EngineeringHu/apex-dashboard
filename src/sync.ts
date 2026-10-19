@@ -1,9 +1,11 @@
+import { setTaskTreeStatus, type TaskStatus } from './task-status';
+import { taskType, type TaskType } from './task-metadata';
 import { App, Notice, TFile } from 'obsidian';
 import type { DashboardSettings, DashboardCard, DashboardData, TaskItem, DocNode, QuickAction, BannerData, CardType } from './types';
 import { parse, serialize, generateDefaultMarkdown } from './parser';
 import { t } from './i18n';
 import { insertTableTodo } from './table-model';
-import { linkTaskTree, copyLinkedTaskTree, detachTaskTree, checkTaskTree, synchronizeLinkedTasks } from './linked-tasks';
+import { linkTaskTree, copyLinkedTaskTree, detachTaskTree, synchronizeLinkedTasks } from './linked-tasks';
 import { getTaskByPath } from './task-tree';
 import {
 	type TaskPath,
@@ -230,16 +232,20 @@ export class SyncEngine {
 	}
 
 	async toggleTask(cardId: string, taskPath: TaskPath, checked: boolean): Promise<void> {
+		await this.setTaskStatus(cardId, taskPath, checked ? 'completed' : 'pending');
+	}
+
+	async setTaskStatus(cardId: string, taskPath: TaskPath, status: TaskStatus): Promise<void> {
 		if (!this.data) return;
 
 		this.data = this.mapCardTasks(this.data, cardId, (tasks) => {
-			let next = updateTaskAt(tasks, taskPath, (t) => checkTaskTree(t, checked));
+			let next = updateTaskAt(tasks, taskPath, (t) => setTaskTreeStatus(t, status));
 
 			for (let depth = taskPath.length - 1; depth > 0; depth--) {
 				next = updateTaskAt(next, taskPath.slice(0, depth), recalcChecked);
 			}
 
-			if (checked && taskPath.length === 1) {
+			if ((status === 'completed' || status === 'cancelled') && taskPath.length === 1) {
 				const target = next[taskPath[0]!];
 				if (target) {
 					const without = removeTaskAt(next, taskPath).tasks;
@@ -338,6 +344,12 @@ export class SyncEngine {
 			if (getTaskByPath(card.tasks, path)?.syncId) { root = path; break; }
 		}
 		this.data = this.mapCardTasks(this.data, cardId, tasks => updateTaskAt(tasks, root, detachTaskTree), false);
+		await this.writeToDisk();
+	}
+
+	async setTaskType(cardId: string, path: TaskPath, type: TaskType): Promise<void> {
+		if (!this.data) return;
+		this.data = this.mapCardTasks(this.data, cardId, tasks => updateTaskAt(tasks, path, task => ({ ...task, taskType: taskType(type) })));
 		await this.writeToDisk();
 	}
 

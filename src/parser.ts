@@ -1,3 +1,5 @@
+import { taskMark } from './task-status';
+import { readTaskMetadataSuffix } from './task-metadata';
 import type {
 	BannerData,
 	BannerLeftStat,
@@ -22,6 +24,7 @@ import type {
 import { parse as parseYaml } from 'yaml';
 import { t } from './i18n';
 import { normalizeColumnPairs } from './column-pairs';
+import { normalizeTaskFilter } from './task-filter';
 import { normalizeDataviewConfig } from './weekly-history-config';
 
 const KNOWN_METADATA_KEYS = new Set(['id', 'link', 'progress', 'due', 'streak', 'type', 'color', 'cover', 'width', 'size', 'lat', 'lon', 'city', 'track', 'days', 'cols', 'rows', 'gcol', 'grow']);
@@ -290,7 +293,7 @@ export function serialize(data: DashboardData): string {
 		if (col.dataviewConfig) {
 			const dc = normalizeDataviewConfig(col.dataviewConfig);
 			lines.push('    dataview:');
-			for (const key of ['readOnlyTasks','deduplicateLinkedTasks','openSource','viewMode','showSource','density','striped','rowNumbers','pageSize'] as const) {
+			for (const key of ['readOnlyTasks','deduplicateLinkedTasks','taskFilter','openSource','viewMode','showSource','density','striped','rowNumbers','pageSize'] as const) {
 				if (dc[key] !== undefined) lines.push('      '+key+': '+JSON.stringify(dc[key]));
 			}
 			// JSON.stringify yields a valid double-quoted YAML scalar and safely
@@ -401,11 +404,13 @@ export function serialize(data: DashboardData): string {
 			if (card.tasks.length > 0) {
 				const writeTask = (task: TaskItem, indent: number) => {
 					const prefix = indent > 0 ? '    '.repeat(indent) : '';
-					let taskLine = `${prefix}- [${task.checked ? 'x' : ' '}] ${task.text}`;
+					let taskLine = `${prefix}- [${taskMark(task)}] ${task.text}`;
 					if (task.reminder) taskLine += ` ⏰ ${task.reminder}`;
 					if (task.collapsed) taskLine += ` <!--collapsed-->`;
 					if (task.dailyNote) taskLine += ` <!--apex-daily:${encodeURIComponent(task.dailyNote)}-->`;
 					if (task.syncId && task.syncInstanceId) taskLine += ' <!--apex-sync:' + task.syncId + ':' + task.syncInstanceId + '-->';
+					if (task.taskType) taskLine += ` <!--apex-task-type:${task.taskType}-->`;
+					if (!task.checked && task.taskStatus === 'deferred') taskLine += ' <!--apex-task-status:deferred-->';
 					lines.push(taskLine);
 					for (const child of task.children ?? []) writeTask(child, indent + 1);
 				};
@@ -1100,6 +1105,7 @@ function parseDataviewConfig(raw: Record<string, unknown>): DataviewConfig {
 		weeklyHistory: raw.weeklyHistory === true ? true : undefined,
         readOnlyTasks: raw.readOnlyTasks === true,
         deduplicateLinkedTasks: raw.deduplicateLinkedTasks === true,
+        taskFilter: normalizeTaskFilter(raw.taskFilter),
         openSource: raw.openSource === 'workspace' ? 'workspace' : 'note',
         viewMode: raw.viewMode === 'table' || raw.viewMode === 'list' ? raw.viewMode : 'auto',
         showSource: raw.showSource !== false,
@@ -1221,9 +1227,10 @@ function extractCardParts(body: string): {
 			continue;
 		}
 
-		const taskMatch = trimmed.match(/^- \[([ xX])\]\s*(.+)$/);
+		const taskMatch = trimmed.match(/^- \[([ xX-])\]\s*(.+)$/);
 		if (taskMatch && taskMatch[1] && taskMatch[2]) {
-			let taskText = taskMatch[2];
+			const typed = readTaskMetadataSuffix(taskMatch[2]);
+			let taskText = typed.text;
 			let syncId: string | undefined, syncInstanceId: string | undefined;
 			const syncMatch = taskText.match(/\s*<!--apex-sync:([a-zA-Z0-9-]+):([a-zA-Z0-9-]+)-->$/);
 			if (syncMatch) {
@@ -1250,7 +1257,7 @@ function extractCardParts(body: string): {
 				taskText = taskText.replace(REMINDER_REGEX, '');
 				taskReminder = reminderMatch[1];
 			}
-			const node: TaskItem = { checked: taskMatch[1] !== ' ', text: taskText, reminder: taskReminder, collapsed: taskCollapsed, ...(dailyNote ? { dailyNote } : {}), ...(syncId ? { syncId, syncInstanceId } : {}) };
+			const node: TaskItem = { ...(typed.taskType ? { taskType: typed.taskType } : {}), ...(taskMatch[1] === '-' ? { taskStatus: 'cancelled' as const } : taskMatch[1] === ' ' && typed.taskStatus ? { taskStatus: typed.taskStatus } : {}), checked: /[xX]/.test(taskMatch[1]), text: taskText, reminder: taskReminder, collapsed: taskCollapsed, ...(dailyNote ? { dailyNote } : {}), ...(syncId ? { syncId, syncInstanceId } : {}) };
 			while (taskStack.length && taskStack[taskStack.length - 1]!.indent >= taskIndent) taskStack.pop();
 			const parent = taskStack[taskStack.length - 1]?.task;
 			if (parent) parent.children = [...(parent.children ?? []), node];

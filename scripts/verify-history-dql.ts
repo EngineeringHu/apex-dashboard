@@ -6,7 +6,10 @@ import { WEEKLY_HISTORY_QUERY, weeklyHistoryConfig } from '../src/weekly-history
 import { addWeeklyHistory, resolveWeek } from '../src/weekly-history';
 import { parse, serialize } from '../src/parser';
 import { scanFileTasks } from '../src/alltasks-scan';
-import { fixture } from './history-dql-fixture';
+import { fixture, taskFilterFixture } from './history-dql-fixture';
+import { normalizeTaskFilter, type TaskFilter } from '../src/task-filter';
+import { normalizeDataviewConfig } from '../src/weekly-history-config';
+import { unfinishedTasks } from '../src/weekly-history';
 import type { ResultRow } from '../src/dql/types';
 async function main(){
  assert.equal(parseDate('2026-10-11'),new Date(2026,9,11).getTime(),'date-only uses local midnight');
@@ -44,6 +47,9 @@ async function main(){
  const copies=fileTasks.filter(t=>t.entries.syncId==='g').map((t,i)=>({...t,entries:{...t.entries,card:i?'B':'A'}}));
  const scoped=executeDql('TASK WHERE card = "B"',[{...source,fields:{...source.fields,'file.tasks':copies}}],{deduplicateLinkedTasks:true});
  assert.ok(scoped.ok&&!scoped.empty&&scoped.result.rows.length===1,'filter matching instance before dedup');
+ const typedCopies=copies.map((copy,i)=>({...copy,entries:{...copy.entries,taskType:i?'temporary':'planned'}}));
+ const filteredCopy=executeDql('TASK LIMIT 1',[{...source,fields:{...source.fields,'file.tasks':typedCopies}}],{deduplicateLinkedTasks:true,taskFilter:{types:['temporary']}});
+ assert.ok(filteredCopy.ok&&!filteredCopy.empty&&filteredCopy.result.rows[0]?.task?.card==='B','type filter selects matching linked copy before dedup and limit');
  // A second board for the same Sunday must see the first board's unfinished tasks.
  const peer=Object.assign(Object.create(Object.getPrototypeOf(f.current)),f.current,{path:'周记/__peer.md',name:'__peer.md',basename:'__peer'});
  f.files.push(peer);f.data.set(peer.path,f.data.get(f.current.path)!.replace('- [ ] Current','- [ ] Peer\n- [x] Peer done'));
@@ -62,6 +68,35 @@ async function main(){
  assert.ok(!flatten(futureResult.result.rows).some(row=>row.task!.text==='Future'),'calendar boundary excludes other future boards');
  const before=f.reads();await buildPages(f.app,{canRead:()=>false});assert.equal(f.reads(),before,'locked query does not read');
  assert.equal(f.writes(),0);
+ const matrix=taskFilterFixture();matrix.files.forEach(file=>invalidatePath(file.path));
+ const indexed=await buildPages(matrix.app,{excludePaths:[matrix.template.path],excludeFolders:['周记/_临时解密']});
+ const run=(taskFilter?:TaskFilter,dql=WEEKLY_HISTORY_QUERY)=>{
+  const outcome=executeDql(dql,indexed,{currentPage:indexed.find(p=>p.file===matrix.current),deduplicateLinkedTasks:true,taskFilter});
+  assert.ok(outcome.ok&&!outcome.empty);return flatten(outcome.result.rows).map(row=>row.task!);
+ };
+ assert.equal(run().length,10,'history includes all noncompleted states and legacy cancelled cells');
+ assert.equal(run().filter(task=>task.taskStatus==='cancelled').length,3);
+ assert.deepEqual(run({statuses:['deferred'],types:['temporary']}).map(task=>task.text),['deferred-temporary']);
+ assert.deepEqual(run({statuses:['pending'],types:['planned']}).map(task=>task.text),['Alpha','Legacy','pending-planned','Earlier'],'old tasks default to planned');
+ assert.equal(run({statuses:['deferred','cancelled'],types:['planned','temporary']}).length,5,'OR within each dimension');
+ assert.equal(run({statuses:[]}).length,0,'empty status selection persists as no results');
+ assert.equal(run({types:[]}).length,0,'empty type selection is not all types');
+ assert.equal(run({statuses:['completed']}).length,0,'query and filter intersect');
+ assert.equal(run({statuses:['completed']},'TASK FROM "周记" WHERE completed').length,3);
+ assert.deepEqual(run(undefined,'TASK WHERE status = "cancelled" AND taskType = "planned"').map(task=>task.text),['cancelled-planned']);
+ assert.equal(run({statuses:['cancelled']},WEEKLY_HISTORY_QUERY.replace('GROUP BY file.link','LIMIT 1\nGROUP BY file.link'))[0]?.text,'cancelled-planned','filter precedes limit and grouping');
+ assert.ok(unfinishedTasks('---\ndashboard: true\ncolumns:\n  - name: Table\n    type: table\n---\n## Table\n| Category | Monday |\n| --- | --- |\n| old | - [-] Legacy cancelled <!--apex-task-type:temporary--> |\n').some(task=>task.text==='Legacy cancelled'));
+ assert.equal(scanFileTasks(matrix.history,matrix.data.get(matrix.history.path)!,true).filter(task=>task.taskStatus==='cancelled').length,0,'calendar/default scanner still omits cancelled tasks');
+ const defaults=normalizeDataviewConfig({query:WEEKLY_HISTORY_QUERY});
+ assert.deepEqual(defaults.taskFilter?.statuses,['pending','deferred','cancelled'],'old built-in preset adopts new defaults without writes');
+ assert.equal(normalizeDataviewConfig({query:'TASK WHERE completed',weeklyHistory:true}).taskFilter,undefined,'legacy custom query is not constrained by new defaults');
+ assert.deepEqual(normalizeTaskFilter({statuses:['deferred','bad','deferred'],types:['temporary','bad']}),{statuses:['deferred'],types:['temporary']});
+ for(const filter of [{statuses:['cancelled'],types:['temporary']},{statuses:[],types:[]}] as TaskFilter[]){
+  const data=parse(addWeeklyHistory(matrix.data.get(matrix.current.path)!));
+  const column=data.columns.find(c=>c.dataviewConfig)!;column.dataviewConfig!.taskFilter=filter;
+  assert.deepEqual(parse(serialize(data)).columns.find(c=>c.dataviewConfig)!.dataviewConfig!.taskFilter,filter,'filter survives template roundtrip');
+ }
+ assert.equal(matrix.writes(),0);
  console.log('DQL history: indexed fields, legacy cells, configurable WHERE/SORT/LIMIT/GROUP, this context, dedup, year parsing, readonly index passed');
 }
 void main().catch(error=>{console.error(error);process.exitCode=1;});
